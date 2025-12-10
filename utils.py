@@ -24,7 +24,7 @@ class BrandInfo:
 class PageDefinition:
     slug: str
     page_name: str
-    page_type: str  # "home", "service", "about", "location"
+    page_type: str  # "home", "service", "sub service", "about", "location"
 
 
 @dataclass
@@ -85,6 +85,73 @@ def parse_seo_csv(uploaded_file) -> Tuple[SEOMap, List[str]]:
     return seo_map, warnings
 
 
+def parse_sitemap_csv(
+    uploaded_file, allowed_page_types: List[str]
+) -> Tuple[pd.DataFrame, List[str]]:
+    """
+    Parse the uploaded sitemap CSV into a DataFrame with columns:
+        slug, page_name, page_type
+
+    - Ensures required columns exist.
+    - Normalizes whitespace.
+    - Normalizes page_type to lower case and collapses underscores to spaces.
+    - Warns if page_type is not in allowed_page_types.
+    - Returns (df, warnings).
+    """
+    warnings: List[str] = []
+
+    if uploaded_file is None:
+        return pd.DataFrame(columns=["slug", "page_name", "page_type"]), warnings
+
+    try:
+        df = pd.read_csv(uploaded_file)
+    except Exception as exc:
+        warnings.append(f"Failed to parse sitemap CSV: {exc}")
+        return pd.DataFrame(columns=["slug", "page_name", "page_type"]), warnings
+
+    required_cols = {"slug", "page_name", "page_type"}
+    missing = required_cols - set(df.columns)
+    if missing:
+        warnings.append(
+            f"Sitemap CSV is missing required columns: {', '.join(sorted(missing))}"
+        )
+        return pd.DataFrame(columns=["slug", "page_name", "page_type"]), warnings
+
+    # Normalize and trim
+    df["slug"] = df["slug"].astype(str).str.strip()
+    df["page_name"] = df["page_name"].astype(str).str.strip()
+
+    # normalize page_type: lower, replace '_' with ' ', collapse multiple spaces
+    def normalize_pt(pt: Any) -> str:
+        s = str(pt).strip().lower().replace("_", " ")
+        # collapse multiple spaces
+        parts = [p for p in s.split(" ") if p]
+        return " ".join(parts)
+
+    df["page_type"] = df["page_type"].apply(normalize_pt)
+
+    # Filter out rows without slug or page_name
+    original_count = len(df)
+    df = df[(df["slug"] != "") & (df["page_name"] != "")]
+    removed = original_count - len(df)
+    if removed > 0:
+        warnings.append(f"Removed {removed} row(s) with empty slug or page_name.")
+
+    # Warn for invalid page types
+    invalid_types = sorted(
+        {pt for pt in df["page_type"].unique() if pt not in allowed_page_types}
+    )
+    if invalid_types:
+        warnings.append(
+            "Found unsupported page_type values in sitemap CSV: "
+            + ", ".join(invalid_types)
+            + f". Allowed: {', '.join(allowed_page_types)}."
+        )
+
+    # Keep all rows; UI will let you adjust invalid types via selectbox
+    return df, warnings
+
+
 def get_page_schema(page_type: str) -> Dict[str, Any]:
     """
     Retrieve the schema dict for the given page type.
@@ -103,7 +170,6 @@ def safe_json_loads(raw: str) -> Any:
     try:
         return json.loads(raw)
     except json.JSONDecodeError:
-        # Attempt naive extraction between first '{' and last '}'
         start = raw.find("{")
         end = raw.rfind("}")
         if start != -1 and end != -1 and end > start:
@@ -111,7 +177,6 @@ def safe_json_loads(raw: str) -> Any:
                 return json.loads(raw[start : end + 1])
             except json.JSONDecodeError:
                 pass
-        # If still failing, raise
         raise
 
 
@@ -150,7 +215,6 @@ def build_site_export(pages_results: List[Dict[str, Any]]) -> Dict[str, Any]:
 def render_page_preview(page_type: str, page_json: Dict[str, Any]) -> None:
     """
     Render a human-readable preview of the structured JSON.
-    This is intentionally generic but gives you a quick visual of the page.
     """
     if not page_json:
         st.info("No final JSON available for this page.")
@@ -172,7 +236,7 @@ def render_page_preview(page_type: str, page_json: Dict[str, Any]) -> None:
                 f"**Secondary CTA:** {hero.get('secondary_cta_label')} → {hero.get('secondary_cta_url', '#')}"
             )
 
-    # Generic handler for common section keys
+    # Home-style layout
     if page_type == "home":
         for section in page_json.get("sections", []):
             st.markdown(f"### {section.get('title', section.get('id', 'Section'))}")
@@ -205,7 +269,8 @@ def render_page_preview(page_type: str, page_json: Dict[str, Any]) -> None:
                 for bullet in section["bullets"]:
                     st.markdown(f"- {bullet}")
 
-    elif page_type == "service":
+    # Service & sub service share the same visual pattern
+    elif page_type in ("service", "sub service"):
         for key in [
             "problem_section",
             "solution_section",
@@ -264,7 +329,9 @@ def render_page_preview(page_type: str, page_json: Dict[str, Any]) -> None:
 
             if key == "team_section" and sec.get("members"):
                 for member in sec["members"]:
-                    st.markdown(f"- **{member.get('name', '')}**, {member.get('role', '')}")
+                    st.markdown(
+                        f"- **{member.get('name', '')}**, {member.get('role', '')}"
+                    )
                     if member.get("bio"):
                         st.write(f"  {member['bio']}")
 
