@@ -45,23 +45,26 @@ def get_openai_client() -> OpenAI:
     return client
 
 
-def call_openai_json(
-    client: OpenAI,
-    messages: List[Dict[str, str]],
-) -> str:
+def call_openai_json(client: OpenAI, messages: List[Dict[str, str]]) -> str:
     """
-    Call the OpenAI Responses API expecting a single JSON object as output.
-    Returns the raw JSON string content.
+    Call the OpenAI Responses API expecting a JSON object.
+    Returns the raw JSON string content using the correct 'format' parameter.
     """
-    response = client.responses.create(
-        model=MODEL_NAME,
-        input=messages,
-        response_format={"type": "json_object"},
-    )
+    try:
+        response = client.responses.create(
+            model=MODEL_NAME,
+            input=messages,
+            format="json",
+        )
+    except TypeError as exc:
+        raise RuntimeError(
+            "Your OpenAI SDK version does not support 'response_format'. "
+            "Use 'format=\"json\"' instead."
+        ) from exc
 
     try:
-        content = response.output[0].content[0].text
+        # Newer OpenAI SDK gives clean text here
+        return response.output_text
     except Exception as exc:
-        raise RuntimeError(f"Unexpected response format from OpenAI: {exc}") from exc
+        raise RuntimeError(f"Unexpected response format: {exc}")
 
-    return content
