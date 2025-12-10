@@ -11,6 +11,7 @@ from utils import (
     BrandInfo,
     PageDefinition,
     parse_seo_csv,
+    parse_sitemap_csv,
     build_site_export,
     render_page_preview,
 )
@@ -33,6 +34,7 @@ def main():
 
     st.title("Website Copy Generation – Internal Agency Tool")
 
+    # Initialize OpenAI client
     try:
         client = get_openai_client()
         api_ok = True
@@ -43,9 +45,9 @@ def main():
 
     col_left, col_right = st.columns([1, 1.2])
 
-    # -------------------------
+    # ----------------------------------------
     # LEFT COLUMN – INPUTS
-    # -------------------------
+    # ----------------------------------------
     with col_left:
         st.header("1. Brand & Project Info")
 
@@ -71,20 +73,49 @@ def main():
 
         st.header("2. Sitemap / Pages")
 
-        allowed_page_types = ["home", "service", "about", "location"]
-        default_pages_df = pd.DataFrame(
-            [
-                {"slug": "home", "page_name": "Home", "page_type": "home"},
-                {
-                    "slug": "services/sample-service",
-                    "page_name": "Sample Service",
-                    "page_type": "service",
-                },
-            ]
+        allowed_page_types = ["home", "service", "sub service", "about", "location"]
+
+        st.caption(
+            "Upload a sitemap CSV with columns: `slug`, `page_name`, `page_type` "
+            "(page_type must be one of: home, service, sub service, about, location). "
+            "You can edit rows after import."
         )
 
+        sitemap_file = st.file_uploader(
+            "Upload Sitemap CSV",
+            type=["csv"],
+            key="sitemap_uploader",
+        )
+
+        sitemap_warnings = []
+        if sitemap_file is not None:
+            pages_df, sitemap_warnings = parse_sitemap_csv(
+                sitemap_file, allowed_page_types
+            )
+        else:
+            # Fallback default sitemap
+            pages_df = pd.DataFrame(
+                [
+                    {"slug": "home", "page_name": "Home", "page_type": "home"},
+                    {
+                        "slug": "services/sample-service",
+                        "page_name": "Sample Service",
+                        "page_type": "service",
+                    },
+                    {
+                        "slug": "services/sample-sub-service",
+                        "page_name": "Sample Sub Service",
+                        "page_type": "sub service",
+                    },
+                ]
+            )
+
+        if sitemap_warnings:
+            for w in sitemap_warnings:
+                st.warning(w)
+
         pages_df = st.data_editor(
-            default_pages_df,
+            pages_df,
             num_rows="dynamic",
             column_config={
                 "slug": st.column_config.TextColumn("Slug", required=True),
@@ -129,20 +160,20 @@ def main():
             "Show intermediate steps (outline / draft / refinement)", value=True
         )
 
-        generate_button = st.button("Generate Site Copy", type="primary", use_container_width=True)
+        generate_button = st.button(
+            "Generate Site Copy", type="primary", use_container_width=True
+        )
 
-    # -------------------------
+    # ----------------------------------------
     # RIGHT COLUMN – RESULTS
-    # -------------------------
+    # ----------------------------------------
     with col_right:
         st.header("Results")
 
         if generate_button and api_ok:
-            # Basic validation
             if not brand_name or not industry:
                 st.error("Please fill in at least Brand / Business Name and Industry / Niche.")
             else:
-                # Build BrandInfo
                 brand_info = BrandInfo(
                     name=brand_name.strip(),
                     industry=industry.strip(),
@@ -153,8 +184,9 @@ def main():
                     notes=notes.strip(),
                 )
 
-                # Build page definitions
                 page_definitions: List[PageDefinition] = []
+                unsupported_types = set()
+
                 for _, row in pages_df.iterrows():
                     slug = str(row.get("slug", "")).strip()
                     page_name = str(row.get("page_name", "")).strip()
@@ -163,22 +195,38 @@ def main():
                     if not slug or not page_name or not page_type:
                         continue
 
+                    if page_type not in allowed_page_types:
+                        unsupported_types.add(page_type)
+                        continue
+
                     page_definitions.append(
-                        PageDefinition(slug=slug, page_name=page_name, page_type=page_type)
+                        PageDefinition(
+                            slug=slug, page_name=page_name, page_type=page_type
+                        )
+                    )
+
+                if unsupported_types:
+                    st.warning(
+                        "The following page_type values are unsupported and were skipped: "
+                        + ", ".join(sorted(unsupported_types))
                     )
 
                 if not page_definitions:
-                    st.error("Please define at least one page in the sitemap table.")
+                    st.error("Please define at least one valid page in the sitemap.")
                 else:
                     st.session_state["results"] = []
                     for page in page_definitions:
                         st.markdown(f"#### Generating: {page.page_name} (`{page.slug}`)")
-                        with st.spinner(f"Generating outline, draft, and refinement for {page.page_name}..."):
+                        with st.spinner(
+                            f"Generating outline, draft, and refinement for {page.page_name}..."
+                        ):
                             seo_entry = seo_map.get(page.slug)
 
                             # Outline
                             try:
-                                outline = generate_outline(client, brand_info, page, seo_entry, style_profile)
+                                outline = generate_outline(
+                                    client, brand_info, page, seo_entry, style_profile
+                                )
                             except Exception as exc:
                                 st.error(
                                     f"Error generating outline for {page.page_name} ({page.slug}): {exc}"
@@ -219,7 +267,7 @@ def main():
                                     st.error(
                                         f"Error refining draft for {page.page_name} ({page.slug}): {exc}"
                                     )
-                                    final_json = draft  # fall back to unrefined draft
+                                    final_json = draft  # fallback to unrefined draft
 
                             st.session_state["results"].append(
                                 {
@@ -231,7 +279,7 @@ def main():
                                 }
                             )
 
-        # Display results from session_state
+        # Display results
         results: List[Dict[str, Any]] = st.session_state.get("results", [])
 
         if results:
@@ -276,7 +324,6 @@ def main():
                     if final_json is not None:
                         render_page_preview(page.page_type, final_json)
 
-            # Download section
             st.markdown("---")
             st.subheader("Download All Final Page JSONs")
 
