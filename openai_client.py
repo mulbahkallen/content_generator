@@ -1,6 +1,6 @@
 # openai_client.py
 import os
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Optional
 
 import streamlit as st
 from openai import OpenAI
@@ -16,14 +16,13 @@ def get_api_key() -> Optional[str]:
     if env_key:
         return env_key
 
-    secrets_key = None
     try:
         if hasattr(st, "secrets") and "OPENAI_API_KEY" in st.secrets:
-            secrets_key = st.secrets["OPENAI_API_KEY"]
+            return st.secrets["OPENAI_API_KEY"]
     except Exception:
-        secrets_key = None
+        pass
 
-    return secrets_key
+    return None
 
 
 def get_openai_client() -> OpenAI:
@@ -34,7 +33,8 @@ def get_openai_client() -> OpenAI:
     api_key = get_api_key()
     if not api_key:
         raise RuntimeError(
-            "OpenAI API key is missing. Set OPENAI_API_KEY env var or st.secrets['OPENAI_API_KEY']."
+            "OpenAI API key is missing. Set OPENAI_API_KEY env var "
+            "or st.secrets['OPENAI_API_KEY']."
         )
 
     # Ensure env var is set so the client can pick it up
@@ -47,24 +47,25 @@ def get_openai_client() -> OpenAI:
 
 def call_openai_json(client: OpenAI, messages: List[Dict[str, str]]) -> str:
     """
-    Call the OpenAI Responses API expecting a JSON object.
-    Returns the raw JSON string content using the correct 'format' parameter.
+    Call the OpenAI Responses API and return the raw text output.
+
+    We intentionally do NOT pass response_format/format here so this works
+    across a wide range of openai-python versions. The prompts already
+    instruct the model to return pure JSON; the calling code then parses it.
     """
-    try:
-        response = client.responses.create(
-            model=MODEL_NAME,
-            input=messages,
-            format="json",
-        )
-    except TypeError as exc:
-        raise RuntimeError(
-            "Your OpenAI SDK version does not support 'response_format'. "
-            "Use 'format=\"json\"' instead."
-        ) from exc
+    # Basic call – no extra keyword args that might not exist in older SDKs
+    response = client.responses.create(
+        model=MODEL_NAME,
+        input=messages,
+    )
 
-    try:
-        # Newer OpenAI SDK gives clean text here
+    # Try the modern convenience accessor first
+    if hasattr(response, "output_text") and response.output_text is not None:
         return response.output_text
-    except Exception as exc:
-        raise RuntimeError(f"Unexpected response format: {exc}")
 
+    # Fallback to walking the response structure (older / different SDKs)
+    try:
+        # Typical shape: response.output[0].content[0].text
+        return response.output[0].content[0].text
+    except Exception as exc:
+        raise RuntimeError(f"Unexpected response format from OpenAI: {exc}")
