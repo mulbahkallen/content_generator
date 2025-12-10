@@ -59,7 +59,6 @@ def call_openai_json(
         response_format={"type": "json_object"},
     )
 
-    # The recommended way as per new Responses API examples
     try:
         content = response.output[0].content[0].text
     except Exception as exc:
