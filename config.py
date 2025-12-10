@@ -174,6 +174,12 @@ SERVICE_PAGE_SCHEMA = {
     },
 }
 
+# For now, sub service pages use the same shape as service pages
+SUB_SERVICE_PAGE_SCHEMA = {
+    **SERVICE_PAGE_SCHEMA,
+    "page_type": "sub service",
+}
+
 ABOUT_PAGE_SCHEMA = {
     "page_type": "about",
     "hero": {
@@ -279,6 +285,7 @@ LOCATION_PAGE_SCHEMA = {
 PAGE_TYPE_SCHEMAS: Dict[str, Dict[str, Any]] = {
     "home": HOME_PAGE_SCHEMA,
     "service": SERVICE_PAGE_SCHEMA,
+    "sub service": SUB_SERVICE_PAGE_SCHEMA,
     "about": ABOUT_PAGE_SCHEMA,
     "location": LOCATION_PAGE_SCHEMA,
 }
