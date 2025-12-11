@@ -5,6 +5,7 @@ from typing import List, Dict, Optional, Any, Tuple
 
 import pandas as pd
 import streamlit as st
+from docx import Document
 
 from config import PAGE_TYPE_SCHEMAS
 
@@ -212,176 +213,69 @@ def build_site_export(pages_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     return site
 
 
+
+
 def render_page_preview(page_type: str, page_json: Dict[str, Any]) -> None:
-    """
-    Render a human-readable preview of the structured JSON.
-    """
+    """Render a human-readable preview of the structured JSON."""
     if not page_json:
         st.info("No final JSON available for this page.")
         return
 
-    hero = page_json.get("hero", {})
-    if hero:
-        headline = hero.get("headline") or hero.get("eyebrow") or "Hero"
-        st.subheader(headline)
-        subheadline = hero.get("subheadline")
-        if subheadline:
-            st.write(subheadline)
-        if hero.get("primary_cta_label"):
-            st.markdown(
-                f"**Primary CTA:** {hero.get('primary_cta_label')} → {hero.get('primary_cta_url', '#')}"
-            )
-        if hero.get("secondary_cta_label"):
-            st.markdown(
-                f"**Secondary CTA:** {hero.get('secondary_cta_label')} → {hero.get('secondary_cta_url', '#')}"
-            )
+    if "sections" in page_json and "hero" in page_json and "meta" in page_json:
+        st.markdown(f"**Page type:** {page_json.get('page_type', page_type)}")
+        hero_block = page_json.get("hero", {})
+        hero_headline = hero_block.get("headline") or hero_block.get("eyebrow")
+        if hero_headline:
+            st.subheader(hero_headline)
+        if hero_block.get("subheadline"):
+            st.write(hero_block["subheadline"])
+        if hero_block.get("primary_cta"):
+            st.markdown(f"**CTA:** {hero_block['primary_cta']}")
 
-    # Home-style layout
-    if page_type == "home":
         for section in page_json.get("sections", []):
-            st.markdown(f"### {section.get('title', section.get('id', 'Section'))}")
-            if "intro" in section and isinstance(section["intro"], str):
-                st.write(section["intro"])
+            heading = section.get("heading") or section.get("id", "Section")
+            st.markdown(f"### {heading}")
+            if section.get("body"):
+                st.write(section["body"])
+            if section.get("target_word_count"):
+                st.caption(f"Target words: {section['target_word_count']}")
+        return
 
-            if section.get("items"):
-                for item in section["items"]:
-                    label = item.get("label") or item.get("question") or item.get(
-                        "name"
-                    )
-                    if label:
-                        st.markdown(f"- **{label}**")
-                    desc = (
-                        item.get("description")
-                        or item.get("answer")
-                        or item.get("quote")
-                    )
-                    if desc:
-                        st.write(f"  {desc}")
+    st.info("Preview unavailable: JSON does not match expected schema.")
 
-            if section.get("steps"):
-                for step in section["steps"]:
-                    step_title = step.get("title", "Step")
-                    st.markdown(f"- **{step_title}**")
-                    if step.get("description"):
-                        st.write(f"  {step['description']}")
 
-            if section.get("bullets"):
-                for bullet in section["bullets"]:
-                    st.markdown(f"- {bullet}")
 
-    # Service & sub service share the same visual pattern
-    elif page_type in ("service", "sub service"):
-        for key in [
-            "problem_section",
-            "solution_section",
-            "benefits_section",
-            "process_section",
-            "faq_section",
-            "final_cta_section",
-        ]:
-            sec = page_json.get(key)
-            if not sec:
-                continue
-            title = sec.get("title", key.replace("_", " ").title())
-            st.markdown(f"### {title}")
 
-            intro = sec.get("intro") or sec.get("body")
-            if intro:
-                st.write(intro)
+def load_text_from_upload(uploaded_file) -> str:
+    """Load text content from an uploaded TXT or DOCX file."""
+    if uploaded_file is None:
+        return ""
 
-            if sec.get("bullets"):
-                for bullet in sec["bullets"]:
-                    st.markdown(f"- {bullet}")
+    name = (uploaded_file.name or "").lower()
+    if name.endswith(".txt"):
+        return uploaded_file.read().decode("utf-8", errors="ignore")
+    if name.endswith(".docx"):
+        document = Document(uploaded_file)
+        return "\n".join(p.text for p in document.paragraphs)
+    return ""
 
-            if sec.get("steps"):
-                for step in sec["steps"]:
-                    st.markdown(f"- **{step.get('title', 'Step')}**")
-                    if step.get("description"):
-                        st.write(f"  {step['description']}")
 
-            if sec.get("items"):
-                for item in sec["items"]:
-                    label = item.get("label") or item.get("question")
-                    if label:
-                        st.markdown(f"- **{label}**")
-                    if item.get("description") or item.get("answer"):
-                        st.write(
-                            f"  {item.get('description') or item.get('answer')}"
-                        )
-
-    elif page_type == "about":
-        for key in [
-            "brand_story",
-            "team_section",
-            "values_section",
-            "credibility_section",
-            "final_cta_section",
-        ]:
-            sec = page_json.get(key)
-            if not sec:
-                continue
-            title = sec.get("title", key.replace("_", " ").title())
-            st.markdown(f"### {title}")
-
-            body = sec.get("body") or sec.get("intro")
-            if body:
-                st.write(body)
-
-            if key == "team_section" and sec.get("members"):
-                for member in sec["members"]:
-                    st.markdown(
-                        f"- **{member.get('name', '')}**, {member.get('role', '')}"
-                    )
-                    if member.get("bio"):
-                        st.write(f"  {member['bio']}")
-
-            if key == "values_section" and sec.get("values"):
-                for val in sec["values"]:
-                    st.markdown(f"- **{val.get('label', '')}**")
-                    if val.get("description"):
-                        st.write(f"  {val['description']}")
-
-            if key == "credibility_section" and sec.get("items"):
-                for item in sec["items"]:
-                    st.markdown(f"- **{item.get('label', '')}**")
-                    if item.get("description"):
-                        st.write(f"  {item['description']}")
-
-    elif page_type == "location":
-        for key in [
-            "local_intro",
-            "services_summary",
-            "neighborhood_specific_details",
-            "trust_signals",
-            "local_faqs",
-            "final_cta_section",
-        ]:
-            sec = page_json.get(key)
-            if not sec:
-                continue
-            title = sec.get("title", key.replace("_", " ").title())
-            st.markdown(f"### {title}")
-
-            body = sec.get("body") or sec.get("intro")
-            if body:
-                st.write(body)
-
-            if sec.get("services"):
-                for svc in sec["services"]:
-                    st.markdown(f"- **{svc.get('label', '')}**")
-                    if svc.get("description"):
-                        st.write(f"  {svc['description']}")
-
-            if sec.get("bullets"):
-                for bullet in sec["bullets"]:
-                    st.markdown(f"- {bullet}")
-
-            if sec.get("items"):
-                for item in sec["items"]:
-                    label = item.get("label") or item.get("question")
-                    if label:
-                        st.markdown(f"- **{label}**")
-                    if item.get("description") or item.get("answer"):
-                        st.write(
-                            f"  {item.get('description') or item.get('answer')}"
-                        )
+def parse_keywords(raw: str) -> List[str]:
+    """Parse comma or newline-separated keywords into a clean list."""
+    if not raw:
+        return []
+    parts = [
+        piece.strip()
+        for line in raw.splitlines()
+        for piece in line.split(",")
+        if piece.strip()
+    ]
+    # Deduplicate while preserving order
+    seen = set()
+    deduped = []
+    for kw in parts:
+        if kw.lower() in seen:
+            continue
+        seen.add(kw.lower())
+        deduped.append(kw)
+    return deduped
