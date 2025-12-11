@@ -513,6 +513,80 @@ def main():
             "Use the lab to spot-check a single page without running the full project."
         )
 
+        st.subheader("Golden rules for the lab")
+        lab_rule_col1, lab_rule_col2 = st.columns([1, 1.2])
+        with lab_rule_col1:
+            lab_golden_rule_upload = st.file_uploader(
+                "Golden rule set (TXT or DOCX)",
+                type=["txt", "docx"],
+                key="lab_golden_rule_upload",
+            )
+        with lab_rule_col2:
+            lab_golden_rule_text = st.text_area(
+                "Paste golden rules (optional)",
+                value=st.session_state.get("golden_rule_text", ""),
+                height=180,
+                key="lab_golden_rule_text",
+            )
+
+        if st.button("Embed golden rules for lab", use_container_width=True):
+            combined_rule_text = (lab_golden_rule_text or "") + "\n" + load_text_from_upload(
+                lab_golden_rule_upload
+            )
+            combined_rule_text = combined_rule_text.strip()
+            if not combined_rule_text:
+                st.error("Please provide golden rule content to embed.")
+            else:
+                try:
+                    embedded = embed_rule_chunks(
+                        client, split_into_chunks(combined_rule_text)
+                    )
+                    st.session_state["golden_rule_chunks"] = embedded
+                    st.session_state["golden_rule_text"] = combined_rule_text
+                    st.success(
+                        f"Embedded {len(embedded)} golden rule chunk(s) for the lab."
+                    )
+                except Exception as exc:
+                    st.error(f"Failed to embed golden rules: {exc}")
+
+        st.subheader("Reference assets for this test")
+        asset_col1, asset_col2 = st.columns(2)
+        with asset_col1:
+            lab_brand_book_upload = st.file_uploader(
+                "Brand book (TXT or DOCX)",
+                type=["txt", "docx"],
+                key="lab_brand_book_upload",
+            )
+            lab_brand_book_text = st.text_area(
+                "Brand book text (optional)",
+                value=st.session_state.get("brand_book_text", ""),
+                height=140,
+                key="lab_brand_book_text",
+            )
+        with asset_col2:
+            lab_onboarding_upload = st.file_uploader(
+                "Client onboarding form (TXT or DOCX)",
+                type=["txt", "docx"],
+                key="lab_onboarding_upload",
+            )
+            lab_onboarding_text = st.text_area(
+                "Onboarding notes (optional)",
+                value=st.session_state.get("onboarding_text", ""),
+                height=140,
+                key="lab_onboarding_text",
+            )
+
+        if lab_brand_book_upload:
+            uploaded_brand = load_text_from_upload(lab_brand_book_upload)
+            if uploaded_brand:
+                lab_brand_book_text = (lab_brand_book_text + "\n" + uploaded_brand).strip()
+                st.session_state["brand_book_text"] = lab_brand_book_text
+        if lab_onboarding_upload:
+            uploaded_onboarding = load_text_from_upload(lab_onboarding_upload)
+            if uploaded_onboarding:
+                lab_onboarding_text = (lab_onboarding_text + "\n" + uploaded_onboarding).strip()
+                st.session_state["onboarding_text"] = lab_onboarding_text
+
         with st.form("qa_lab_form"):
             use_builder_defaults = st.checkbox(
                 "Prefill with Build tab brand info when available", value=True
@@ -563,7 +637,7 @@ def main():
                 lab_slug = st.text_input("Slug", value="services/test", key="lab_slug")
                 lab_page_type = st.selectbox(
                     "Page type",
-                    options=["home", "service", "sub service", "about", "location"],
+                    options=["home", "service", "about", "location"],
                     key="lab_page_type",
                 )
                 lab_location = st.text_input(
