@@ -56,7 +56,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-]
 
 INDUSTRY_OPTIONS: List[str] = [
     "General Medicine",
