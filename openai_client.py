@@ -52,7 +52,6 @@ def call_openai_json(client: OpenAI, messages: List[Dict[str, str]]) -> str:
         response = client.responses.create(
             model=MODEL_NAME,
             input=messages,
-            response_format={"type": "json_object"},
         )
     except Exception as exc:
         raise RuntimeError(f"OpenAI request failed: {exc}") from exc
