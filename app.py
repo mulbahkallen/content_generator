@@ -253,8 +253,8 @@ def main():
             st.header("5. Golden Rules & Assets")
             st.caption("Embed the golden rule set once to reuse across pages.")
             golden_rule_file = st.file_uploader(
-                "Golden rule set (TXT or DOCX)",
-                type=["txt", "docx"],
+                "Golden rule set (TXT, DOCX, or PDF)",
+                type=["txt", "docx", "pdf"],
                 key="golden_rule_upload",
             )
             golden_rule_text = st.text_area(
@@ -281,12 +281,12 @@ def main():
                     except Exception as exc:
                         st.error(f"Failed to embed golden rules: {exc}")
 
-            st.caption("Upload brand and onboarding references (plain text or DOCX)")
+            st.caption("Upload brand and onboarding references (plain text, DOCX, or PDF)")
             brand_book_upload = st.file_uploader(
-                "Brand book copy", type=["txt", "docx"], key="brand_book_uploader"
+                "Brand book copy", type=["txt", "docx", "pdf"], key="brand_book_uploader"
             )
             onboarding_upload = st.file_uploader(
-                "Client onboarding form", type=["txt", "docx"], key="onboarding_uploader"
+                "Client onboarding form", type=["txt", "docx", "pdf"], key="onboarding_uploader"
             )
             brand_book_text = load_text_from_upload(brand_book_upload)
             onboarding_text = load_text_from_upload(onboarding_upload)
@@ -517,8 +517,8 @@ def main():
         lab_rule_col1, lab_rule_col2 = st.columns([1, 1.2])
         with lab_rule_col1:
             lab_golden_rule_upload = st.file_uploader(
-                "Golden rule set (TXT or DOCX)",
-                type=["txt", "docx"],
+                "Golden rule set (TXT, DOCX, or PDF)",
+                type=["txt", "docx", "pdf"],
                 key="lab_golden_rule_upload",
             )
         with lab_rule_col2:
@@ -553,8 +553,8 @@ def main():
         asset_col1, asset_col2 = st.columns(2)
         with asset_col1:
             lab_brand_book_upload = st.file_uploader(
-                "Brand book (TXT or DOCX)",
-                type=["txt", "docx"],
+                "Brand book (TXT, DOCX, or PDF)",
+                type=["txt", "docx", "pdf"],
                 key="lab_brand_book_upload",
             )
             lab_brand_book_text = st.text_area(
@@ -565,8 +565,8 @@ def main():
             )
         with asset_col2:
             lab_onboarding_upload = st.file_uploader(
-                "Client onboarding form (TXT or DOCX)",
-                type=["txt", "docx"],
+                "Client onboarding form (TXT, DOCX, or PDF)",
+                type=["txt", "docx", "pdf"],
                 key="lab_onboarding_upload",
             )
             lab_onboarding_text = st.text_area(
