@@ -2,13 +2,16 @@
 import json
 from typing import Dict, Any, Optional
 
+from openai import OpenAI
+
 from config import GLOBAL_SYSTEM_PROMPT, OUTLINE_SCHEMA
+from examples import get_example_for
 from utils import BrandInfo, PageDefinition, SEOEntry, get_page_schema, safe_json_loads
 from openai_client import call_openai_json
 
 
 def generate_outline(
-    client,
+    client: OpenAI,
     brand_info: BrandInfo,
     page: PageDefinition,
     seo_entry: Optional[SEOEntry],
@@ -41,23 +44,21 @@ Page info:
 - Page name: {page.page_name}
 - Page type: {page.page_type}
 
-SEO:
+SEO targets:
 - Primary keyword: {primary_kw or "NONE"}
 - Supporting keywords: {", ".join(supporting_kws) if supporting_kws else "NONE"}
 
 Style profile: {style_profile}
 
 Task:
-- Create an outline for this page as JSON following this schema:
+- Produce a lean, logically ordered outline that mirrors the page schema.
+- Keep each section purposeful and concise; do NOT write full copy.
+- Include target_word_count estimates that keep the page skimmable.
+
+Expected JSON shape for the outline:
 {json.dumps(OUTLINE_SCHEMA, indent=2)}
 
-Guidelines:
-- Map sections to the eventual page schema for page type "{page.page_type}".
-- Choose descriptive section titles that reflect the content.
-- Include a short description for each section.
-- Set reasonable target_word_count values.
-
-Return ONLY a JSON object matching the OUTLINE_SCHEMA.
+Return ONLY a JSON object matching the outline schema.
 """,
         },
     ]
@@ -67,7 +68,7 @@ Return ONLY a JSON object matching the OUTLINE_SCHEMA.
 
 
 def generate_draft(
-    client,
+    client: OpenAI,
     brand_info: BrandInfo,
     page: PageDefinition,
     seo_entry: Optional[SEOEntry],
@@ -82,6 +83,12 @@ def generate_draft(
     supporting_kws = seo_entry.supporting_keywords if seo_entry else []
 
     page_schema = get_page_schema(page.page_type)
+    example = get_example_for(style_profile, page.page_type)
+    example_block = (
+        f"\nReference example (structure/tone only; do NOT copy wording):\n{json.dumps(example, indent=2)}"
+        if example
+        else ""
+    )
 
     messages = [
         {"role": "system", "content": GLOBAL_SYSTEM_PROMPT},
@@ -103,22 +110,23 @@ Page info:
 - Page name: {page.page_name}
 - Page type: {page.page_type}
 
-SEO:
+SEO targets:
 - Primary keyword: {primary_kw or "NONE"}
 - Supporting keywords: {", ".join(supporting_kws) if supporting_kws else "NONE"}
 
 Style profile: {style_profile}
 
-Outline (follow this closely when writing the copy):
+Outline (follow this structure and intent):
 {json.dumps(outline, indent=2)}
+{example_block}
 
 Expected JSON schema for the final draft:
 {json.dumps(page_schema, indent=2)}
 
 Task:
-- Expand the outline into complete, production-ready copy.
+- Expand the outline into complete, production-ready copy with concise paragraphs and strong headings.
 - Populate EVERY field of the schema with appropriate text or arrays.
-- Use the primary and supporting keywords naturally in the content.
+- Use the primary keyword 2–4 times naturally; weave supporting keywords only where they fit.
 - Do not add or remove fields from the schema.
 - Return ONLY a single JSON object matching the schema.
 """,
@@ -130,7 +138,7 @@ Task:
 
 
 def refine_draft(
-    client,
+    client: OpenAI,
     brand_info: BrandInfo,
     page: PageDefinition,
     seo_entry: Optional[SEOEntry],
@@ -142,6 +150,13 @@ def refine_draft(
     """
     primary_kw = seo_entry.primary_keyword if seo_entry else None
     supporting_kws = seo_entry.supporting_keywords if seo_entry else []
+
+    example = get_example_for(style_profile, page.page_type)
+    example_block = (
+        f"\nReference example for tone/structure (do not copy wording):\n{json.dumps(example, indent=2)}"
+        if example
+        else ""
+    )
 
     messages = [
         {"role": "system", "content": GLOBAL_SYSTEM_PROMPT},
@@ -171,14 +186,14 @@ Style profile: {style_profile}
 
 Existing draft JSON:
 {json.dumps(draft_json, indent=2)}
+{example_block}
 
 Task:
-- Keep the SAME JSON structure (same fields and nesting).
-- Ensure the primary keyword appears naturally 2–4 times in the overall page.
-- Weave in supporting keywords where they genuinely fit.
-- Remove obvious repetition and generic filler.
-- Tighten language to be concise, specific, and benefit-focused.
-- Preserve the intent and structure of the draft while improving it.
+- Keep the SAME JSON structure (identical fields and nesting).
+- Ensure the primary keyword appears naturally 2–4 times across the page.
+- Weave in supporting keywords only where they add clarity.
+- Remove repetition and generic filler; tighten language and headings.
+- Preserve intent while improving specificity, flow, and polish.
 
 Return ONLY the refined JSON object with the SAME structure.
 """,

@@ -1,4 +1,5 @@
 # openai_client.py
+import json
 import os
 from typing import List, Dict, Optional
 
@@ -46,26 +47,29 @@ def get_openai_client() -> OpenAI:
 
 
 def call_openai_json(client: OpenAI, messages: List[Dict[str, str]]) -> str:
-    """
-    Call the OpenAI Responses API and return the raw text output.
+    """Call the OpenAI Responses API and return the raw JSON string output."""
+    try:
+        response = client.responses.create(
+            model=MODEL_NAME,
+            input=messages,
+            response_format={"type": "json_object"},
+        )
+    except Exception as exc:
+        raise RuntimeError(f"OpenAI request failed: {exc}") from exc
 
-    We intentionally do NOT pass response_format/format here so this works
-    across a wide range of openai-python versions. The prompts already
-    instruct the model to return pure JSON; the calling code then parses it.
-    """
-    # Basic call – no extra keyword args that might not exist in older SDKs
-    response = client.responses.create(
-        model=MODEL_NAME,
-        input=messages,
-    )
-
-    # Try the modern convenience accessor first
+    # Prefer explicit text accessor when available
     if hasattr(response, "output_text") and response.output_text is not None:
         return response.output_text
 
-    # Fallback to walking the response structure (older / different SDKs)
+    # Walk the output content to support different SDK structures
     try:
-        # Typical shape: response.output[0].content[0].text
-        return response.output[0].content[0].text
+        for output in getattr(response, "output", []):
+            for content in getattr(output, "content", []):
+                if getattr(content, "json", None) is not None:
+                    return json.dumps(content.json)
+                if getattr(content, "text", None) is not None:
+                    return content.text
     except Exception as exc:
-        raise RuntimeError(f"Unexpected response format from OpenAI: {exc}")
+        raise RuntimeError(f"Unexpected response format from OpenAI: {exc}") from exc
+
+    raise RuntimeError("OpenAI response did not contain text or JSON content")

@@ -27,6 +27,8 @@ st.set_page_config(
 def init_session_state():
     if "results" not in st.session_state:
         st.session_state["results"] = []
+    if "uploaded_examples" not in st.session_state:
+        st.session_state["uploaded_examples"] = {}
 
 
 def main():
@@ -153,6 +155,28 @@ def main():
             options=STYLE_PROFILE_OPTIONS,
             index=0,
         )
+
+        st.caption(
+            "Optional: Upload example JSON mapping page_type -> example payload to override the defaults."
+        )
+        example_upload = st.file_uploader(
+            "Upload example JSON", type=["json"], key="example_uploader"
+        )
+        if example_upload is not None:
+            try:
+                uploaded_data = json.load(example_upload)
+                if not isinstance(uploaded_data, dict):
+                    raise ValueError("Uploaded file must be a JSON object mapping page_type to example.")
+                st.session_state["uploaded_examples"] = uploaded_data
+                st.success(
+                    "Example JSON loaded. It will override built-in examples for matching page types."
+                )
+                st.caption(
+                    "Loaded examples for page types: "
+                    + ", ".join(sorted(uploaded_data.keys()))
+                )
+            except Exception as exc:
+                st.error(f"Failed to load example JSON: {exc}")
 
         st.header("5. Controls")
 
