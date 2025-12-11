@@ -56,21 +56,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-IMAGING_AND_DIAGNOSTIC_OPTIONS = [
-    "Imaging & Diagnostic Services",
-    "Medical Imaging Center",
-    "Diagnostic Radiology",
-    "MRI Center",
-    "CT Scan Center",
-    "PET Scan Center",
-    "X-Ray Services",
-    "Ultrasound Center",
-    "Breast Imaging / Mammography",
-    "DEXA Bone Density Testing",
-    "Mobile Imaging Services",
-    "Interventional Radiology (IR)",
-    "Cardiac Imaging",
-    "Nuclear Medicine",
 ]
 
 INDUSTRY_OPTIONS: List[str] = [
@@ -197,7 +182,20 @@ INDUSTRY_OPTIONS: List[str] = [
     "Concierge OB-GYN",
     "Suboxone / MAT Clinics",
     "Aesthetics + Wellness Hybrids",
-    *IMAGING_AND_DIAGNOSTIC_OPTIONS,
+    "Imaging & Diagnostic Services",
+    "Medical Imaging Center",
+    "Diagnostic Radiology",
+    "MRI Center",
+    "CT Scan Center",
+    "PET Scan Center",
+    "X-Ray Services",
+    "Ultrasound Center",
+    "Breast Imaging / Mammography",
+    "DEXA Bone Density Testing",
+    "Mobile Imaging Services",
+    "Interventional Radiology (IR)",
+    "Cardiac Imaging",
+    "Nuclear Medicine",
 ]
 CUSTOM_INDUSTRY_OPTION = "Other / Custom"
 
