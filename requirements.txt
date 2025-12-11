@@ -4,3 +4,4 @@ pandas
 tiktoken
 python-docx
 numpy
+PyPDF2
