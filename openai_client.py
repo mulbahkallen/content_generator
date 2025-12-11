@@ -1,7 +1,7 @@
 # openai_client.py
 import json
 import os
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
 import streamlit as st
 from openai import OpenAI

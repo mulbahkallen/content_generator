@@ -1,3 +1,6 @@
 streamlit
 openai>=1.0.0
 pandas
+tiktoken
+python-docx
+numpy

@@ -11,12 +11,15 @@ from utils import (
     BrandInfo,
     PageDefinition,
     SEOEntry,
+    build_site_export,
+    load_text_from_upload,
+    parse_keywords,
     parse_seo_csv,
     parse_sitemap_csv,
-    build_site_export,
     render_page_preview,
 )
-from generation_pipeline import generate_outline, generate_draft, refine_draft
+from golden_rules import embed_rule_chunks, split_into_chunks
+from generation_pipeline import generate_medical_page
 
 
 st.set_page_config(
@@ -75,6 +78,14 @@ def init_session_state():
         st.session_state["uploaded_examples"] = {}
     if "lab_result" not in st.session_state:
         st.session_state["lab_result"] = None
+    if "golden_rule_chunks" not in st.session_state:
+        st.session_state["golden_rule_chunks"] = []
+    if "golden_rule_text" not in st.session_state:
+        st.session_state["golden_rule_text"] = ""
+    if "brand_book_text" not in st.session_state:
+        st.session_state["brand_book_text"] = ""
+    if "onboarding_text" not in st.session_state:
+        st.session_state["onboarding_text"] = ""
 
 
 def main():
@@ -140,7 +151,7 @@ def main():
 
             st.header("2. Sitemap / Pages")
 
-            allowed_page_types = ["home", "service", "sub service", "about", "location"]
+            allowed_page_types = ["home", "service", "about", "location"]
 
             st.caption(
                 "Upload a sitemap CSV with columns: `slug`, `page_name`, `page_type` "
@@ -168,11 +179,6 @@ def main():
                             "slug": "services/sample-service",
                             "page_name": "Sample Service",
                             "page_type": "service",
-                        },
-                        {
-                            "slug": "services/sample-sub-service",
-                            "page_name": "Sample Sub Service",
-                            "page_type": "sub service",
                         },
                     ]
                 )
@@ -244,7 +250,65 @@ def main():
                 except Exception as exc:
                     st.error(f"Failed to load example JSON: {exc}")
 
-            st.header("5. Controls")
+            st.header("5. Golden Rules & Assets")
+            st.caption("Embed the golden rule set once to reuse across pages.")
+            golden_rule_file = st.file_uploader(
+                "Golden rule set (TXT or DOCX)",
+                type=["txt", "docx"],
+                key="golden_rule_upload",
+            )
+            golden_rule_text = st.text_area(
+                "Paste golden rule set",
+                value=st.session_state.get("golden_rule_text", ""),
+                height=200,
+            )
+            if st.button("Embed golden rules", use_container_width=True):
+                combined_rule_text = golden_rule_text + "\n" + load_text_from_upload(
+                    golden_rule_file
+                )
+                combined_rule_text = combined_rule_text.strip()
+                if not combined_rule_text:
+                    st.error("Please provide golden rule content to embed.")
+                else:
+                    chunks = split_into_chunks(combined_rule_text)
+                    try:
+                        embedded = embed_rule_chunks(client, chunks)
+                        st.session_state["golden_rule_chunks"] = embedded
+                        st.session_state["golden_rule_text"] = combined_rule_text
+                        st.success(
+                            f"Embedded {len(embedded)} golden rule chunk(s). Reuse for all generations."
+                        )
+                    except Exception as exc:
+                        st.error(f"Failed to embed golden rules: {exc}")
+
+            st.caption("Upload brand and onboarding references (plain text or DOCX)")
+            brand_book_upload = st.file_uploader(
+                "Brand book copy", type=["txt", "docx"], key="brand_book_uploader"
+            )
+            onboarding_upload = st.file_uploader(
+                "Client onboarding form", type=["txt", "docx"], key="onboarding_uploader"
+            )
+            brand_book_text = load_text_from_upload(brand_book_upload)
+            onboarding_text = load_text_from_upload(onboarding_upload)
+            if brand_book_text:
+                st.session_state["brand_book_text"] = brand_book_text
+            if onboarding_text:
+                st.session_state["onboarding_text"] = onboarding_text
+
+            st.header("6. Keyword Inputs")
+            paramount_kw_raw = st.text_area(
+                "Paramount keyword list (comma or newline separated)",
+                value="",
+            )
+            primary_kw_raw = st.text_area(
+                "Primary keyword list (comma or newline separated)",
+                value="",
+            )
+
+            st.header("7. Controls")
+            page_topic = st.text_input(
+                "Page topic / subject (e.g., facelift, concierge medicine)", value=""
+            )
 
             show_intermediate = st.checkbox(
                 "Show intermediate steps (outline / draft / refinement)", value=True
@@ -278,6 +342,19 @@ def main():
                     uvp=uvp.strip(),
                     notes=notes.strip(),
                 )
+
+                paramount_keywords = parse_keywords(paramount_kw_raw)
+                primary_keywords = parse_keywords(primary_kw_raw)
+                st.session_state["paramount_kw_cache"] = paramount_keywords
+                st.session_state["primary_kw_cache"] = primary_keywords
+                embedded_rules = st.session_state.get("golden_rule_chunks", [])
+                brand_book_text = st.session_state.get("brand_book_text", "")
+                onboarding_text = st.session_state.get("onboarding_text", "")
+
+                if not embedded_rules:
+                    st.warning(
+                        "No embedded golden rules detected. Add and embed them to guide medical copy."
+                    )
 
                 page_definitions: List[PageDefinition] = []
                 unsupported_types = set()
@@ -318,52 +395,29 @@ def main():
                         ):
                             seo_entry = seo_map.get(page.slug)
 
-                            # Outline
+                            outline = None
+                            draft = None
+                            final_json = None
+
                             try:
-                                outline = generate_outline(
-                                    client, brand_info, page, seo_entry, style_profile
+                                final_json = generate_medical_page(
+                                    client,
+                                    brand_info,
+                                    page,
+                                    seo_entry,
+                                    style_profile,
+                                    topic=page_topic,
+                                    paramount_keywords=paramount_keywords,
+                                    primary_keywords=primary_keywords,
+                                    brand_book=brand_book_text,
+                                    onboarding_notes=onboarding_text,
+                                    golden_rule_chunks=embedded_rules,
+                                    top_rules=12,
                                 )
                             except Exception as exc:
                                 st.error(
-                                    f"Error generating outline for {page.page_name} ({page.slug}): {exc}"
+                                    f"Error generating page for {page.page_name} ({page.slug}): {exc}"
                                 )
-                                outline = None
-
-                            # Draft
-                            draft = None
-                            if outline is not None:
-                                try:
-                                    draft = generate_draft(
-                                        client,
-                                        brand_info,
-                                        page,
-                                        seo_entry,
-                                        style_profile,
-                                        outline,
-                                    )
-                                except Exception as exc:
-                                    st.error(
-                                        f"Error generating draft for {page.page_name} ({page.slug}): {exc}"
-                                    )
-                                    draft = None
-
-                            # Refinement
-                            final_json = None
-                            if draft is not None:
-                                try:
-                                    final_json = refine_draft(
-                                        client,
-                                        brand_info,
-                                        page,
-                                        seo_entry,
-                                        style_profile,
-                                        draft,
-                                    )
-                                except Exception as exc:
-                                    st.error(
-                                        f"Error refining draft for {page.page_name} ({page.slug}): {exc}"
-                                    )
-                                    final_json = draft  # fallback to unrefined draft
 
                             st.session_state["results"].append(
                                 {
@@ -459,6 +513,80 @@ def main():
             "Use the lab to spot-check a single page without running the full project."
         )
 
+        st.subheader("Golden rules for the lab")
+        lab_rule_col1, lab_rule_col2 = st.columns([1, 1.2])
+        with lab_rule_col1:
+            lab_golden_rule_upload = st.file_uploader(
+                "Golden rule set (TXT or DOCX)",
+                type=["txt", "docx"],
+                key="lab_golden_rule_upload",
+            )
+        with lab_rule_col2:
+            lab_golden_rule_text = st.text_area(
+                "Paste golden rules (optional)",
+                value=st.session_state.get("golden_rule_text", ""),
+                height=180,
+                key="lab_golden_rule_text",
+            )
+
+        if st.button("Embed golden rules for lab", use_container_width=True):
+            combined_rule_text = (lab_golden_rule_text or "") + "\n" + load_text_from_upload(
+                lab_golden_rule_upload
+            )
+            combined_rule_text = combined_rule_text.strip()
+            if not combined_rule_text:
+                st.error("Please provide golden rule content to embed.")
+            else:
+                try:
+                    embedded = embed_rule_chunks(
+                        client, split_into_chunks(combined_rule_text)
+                    )
+                    st.session_state["golden_rule_chunks"] = embedded
+                    st.session_state["golden_rule_text"] = combined_rule_text
+                    st.success(
+                        f"Embedded {len(embedded)} golden rule chunk(s) for the lab."
+                    )
+                except Exception as exc:
+                    st.error(f"Failed to embed golden rules: {exc}")
+
+        st.subheader("Reference assets for this test")
+        asset_col1, asset_col2 = st.columns(2)
+        with asset_col1:
+            lab_brand_book_upload = st.file_uploader(
+                "Brand book (TXT or DOCX)",
+                type=["txt", "docx"],
+                key="lab_brand_book_upload",
+            )
+            lab_brand_book_text = st.text_area(
+                "Brand book text (optional)",
+                value=st.session_state.get("brand_book_text", ""),
+                height=140,
+                key="lab_brand_book_text",
+            )
+        with asset_col2:
+            lab_onboarding_upload = st.file_uploader(
+                "Client onboarding form (TXT or DOCX)",
+                type=["txt", "docx"],
+                key="lab_onboarding_upload",
+            )
+            lab_onboarding_text = st.text_area(
+                "Onboarding notes (optional)",
+                value=st.session_state.get("onboarding_text", ""),
+                height=140,
+                key="lab_onboarding_text",
+            )
+
+        if lab_brand_book_upload:
+            uploaded_brand = load_text_from_upload(lab_brand_book_upload)
+            if uploaded_brand:
+                lab_brand_book_text = (lab_brand_book_text + "\n" + uploaded_brand).strip()
+                st.session_state["brand_book_text"] = lab_brand_book_text
+        if lab_onboarding_upload:
+            uploaded_onboarding = load_text_from_upload(lab_onboarding_upload)
+            if uploaded_onboarding:
+                lab_onboarding_text = (lab_onboarding_text + "\n" + uploaded_onboarding).strip()
+                st.session_state["onboarding_text"] = lab_onboarding_text
+
         with st.form("qa_lab_form"):
             use_builder_defaults = st.checkbox(
                 "Prefill with Build tab brand info when available", value=True
@@ -509,7 +637,7 @@ def main():
                 lab_slug = st.text_input("Slug", value="services/test", key="lab_slug")
                 lab_page_type = st.selectbox(
                     "Page type",
-                    options=["home", "service", "sub service", "about", "location"],
+                    options=["home", "service", "about", "location"],
                     key="lab_page_type",
                 )
                 lab_location = st.text_input(
@@ -533,6 +661,22 @@ def main():
             lab_primary_keyword = st.text_input(
                 "Primary keyword", value="consulting services", key="lab_primary_keyword"
             )
+            lab_paramount_keywords = st.text_area(
+                "Paramount keywords (comma/newline separated)",
+                value=", ".join(st.session_state.get("paramount_kw_cache", [])),
+                key="lab_paramount_keywords",
+            )
+            lab_primary_keywords = st.text_area(
+                "Primary keywords (comma/newline separated)",
+                value=", ".join(st.session_state.get("primary_kw_cache", [])),
+                key="lab_primary_keywords",
+            )
+            lab_topic = st.text_input(
+                "Page topic / subject", value="Medical service focus", key="lab_topic"
+            )
+            lab_top_rules = st.slider(
+                "Golden rule chunks to retrieve", min_value=5, max_value=20, value=12, step=1
+            )
             lab_style_profile = st.selectbox(
                 "Style profile for test run",
                 options=STYLE_PROFILE_OPTIONS,
@@ -550,6 +694,22 @@ def main():
             )
 
         if lab_submit and api_ok:
+            lab_paramount_list = parse_keywords(lab_paramount_keywords)
+            lab_primary_list = parse_keywords(lab_primary_keywords)
+            embedded_rules = st.session_state.get("golden_rule_chunks", [])
+            brand_book_text = (lab_brand_book_text or "").strip()
+            onboarding_text = (lab_onboarding_text or "").strip()
+
+            if brand_book_text:
+                st.session_state["brand_book_text"] = brand_book_text
+            else:
+                brand_book_text = st.session_state.get("brand_book_text", "")
+
+            if onboarding_text:
+                st.session_state["onboarding_text"] = onboarding_text
+            else:
+                onboarding_text = st.session_state.get("onboarding_text", "")
+
             lab_brand_info = BrandInfo(
                 name=lab_brand.strip(),
                 industry=lab_industry.strip(),
@@ -575,28 +735,23 @@ def main():
             )
 
             try:
-                lab_outline = generate_outline(
-                    client, lab_brand_info, lab_page, lab_seo, lab_style_profile
-                )
-                lab_draft = generate_draft(
+                lab_final = generate_medical_page(
                     client,
                     lab_brand_info,
                     lab_page,
                     lab_seo,
                     lab_style_profile,
-                    lab_outline,
-                )
-                lab_final = refine_draft(
-                    client,
-                    lab_brand_info,
-                    lab_page,
-                    lab_seo,
-                    lab_style_profile,
-                    lab_draft,
+                    topic=lab_topic,
+                    paramount_keywords=lab_paramount_list,
+                    primary_keywords=lab_primary_list,
+                    brand_book=brand_book_text,
+                    onboarding_notes=onboarding_text,
+                    golden_rule_chunks=embedded_rules,
+                    top_rules=lab_top_rules,
                 )
                 st.session_state["lab_result"] = {
-                    "outline": lab_outline,
-                    "draft": lab_draft,
+                    "outline": None,
+                    "draft": None,
                     "final": lab_final,
                     "page": lab_page,
                 }

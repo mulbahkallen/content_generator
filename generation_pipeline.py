@@ -1,12 +1,19 @@
 # generation_pipeline.py
 import json
-from typing import Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
-from config import GLOBAL_SYSTEM_PROMPT, OUTLINE_SCHEMA
+from config import GLOBAL_SYSTEM_PROMPT, MEDICAL_PAGE_SCHEMA, OUTLINE_SCHEMA
 from examples import get_example_for
-from utils import BrandInfo, PageDefinition, SEOEntry, get_page_schema, safe_json_loads
+from golden_rules import RuleChunk, retrieve_relevant_rules
+from utils import (
+    BrandInfo,
+    PageDefinition,
+    SEOEntry,
+    get_page_schema,
+    safe_json_loads,
+)
 from openai_client import call_openai_json
 
 
@@ -196,6 +203,77 @@ Task:
 - Preserve intent while improving specificity, flow, and polish.
 
 Return ONLY the refined JSON object with the SAME structure.
+""",
+        },
+    ]
+
+    raw = call_openai_json(client, messages)
+    return safe_json_loads(raw)
+
+
+def generate_medical_page(
+    client: OpenAI,
+    brand_info: BrandInfo,
+    page: PageDefinition,
+    seo_entry: Optional[SEOEntry],
+    style_profile: str,
+    topic: str,
+    paramount_keywords: List[str],
+    primary_keywords: List[str],
+    brand_book: str,
+    onboarding_notes: str,
+    golden_rule_chunks: List[RuleChunk],
+    top_rules: int = 12,
+) -> Dict[str, Any]:
+    """Generate structured medical page copy using golden rule retrieval."""
+
+    primary_kw = seo_entry.primary_keyword if seo_entry else None
+    supporting_kws = seo_entry.supporting_keywords if seo_entry else []
+    target_keywords = list({kw: None for kw in primary_keywords + supporting_kws}.keys())
+    topic_query = f"{page.page_type} page about {topic or page.page_name} for {brand_info.industry} in {brand_info.location}"
+    selected_rules = retrieve_relevant_rules(client, topic_query, golden_rule_chunks, top_n=top_rules)
+    rule_text = "\n\n".join(f"- {rc.text}" for rc in selected_rules)
+
+    schema_block = json.dumps(MEDICAL_PAGE_SCHEMA, indent=2)
+
+    messages = [
+        {"role": "system", "content": GLOBAL_SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": f"""
+You are generating a full medical website page JSON that MUST follow the schema exactly.
+
+Brand info:
+- Name: {brand_info.name}
+- Industry: {brand_info.industry}
+- Primary location: {brand_info.location}
+- Voice & tone: {brand_info.voice_tone}
+- Target audience: {brand_info.target_audience}
+- Unique value proposition: {brand_info.uvp}
+
+Project inputs:
+- Page type: {page.page_type}
+- Page name: {page.page_name}
+- Page topic/subject: {topic}
+- Style profile: {style_profile}
+- Paramount keywords: {', '.join(paramount_keywords) if paramount_keywords else 'NONE'}
+- Primary keywords: {', '.join(target_keywords) if target_keywords else 'NONE'}
+- Onboarding insights: {onboarding_notes or 'NONE PROVIDED'}
+- Brand book highlights: {brand_book or 'NONE PROVIDED'}
+
+Golden rule excerpts to honor (most relevant first):
+{rule_text or 'No golden rules provided.'}
+
+Task:
+- Combine the golden rule guidance, keywords, brand book, and onboarding notes into a cohesive prompt for GPT-4 generation.
+- Ensure keyword usage is natural, benefits-led, and location-aware.
+- Keep paragraphs tight and avoid filler.
+- Return ONLY one JSON object matching the schema below.
+
+Required JSON schema:
+{schema_block}
+
+Also surface a compact diagnostics object capturing: which rule chunks were used, injected keywords, and any structural risks.
 """,
         },
     ]

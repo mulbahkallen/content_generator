@@ -10,6 +10,32 @@ STYLE_PROFILE_OPTIONS = [
     "Concise and direct",
 ]
 
+MEDICAL_PAGE_SCHEMA = {
+    "page_type": "home",
+    "style_profile": "string",
+    "industry": "string",
+    "meta": {
+        "tone_descriptors": ["string", "string", "string"],
+        "target_total_word_count": 1100,
+        "paramount_keywords_used": ["string"],
+        "primary_keywords_used": ["string"],
+    },
+    "hero": {
+        "eyebrow": "string",
+        "headline": "string",
+        "subheadline": "string",
+        "primary_cta": "string",
+    },
+    "sections": [
+        {
+            "id": "intro",
+            "heading": "string",
+            "body": "string",
+            "target_word_count": 150,
+        }
+    ],
+}
+
 GLOBAL_SYSTEM_PROMPT = """
 You are a senior web and SEO copywriter at a high-end digital agency.
 
