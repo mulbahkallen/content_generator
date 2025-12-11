@@ -1,11 +1,12 @@
 # utils.py
 import json
 from dataclasses import dataclass, field
-from typing import List, Dict, Optional, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 import streamlit as st
 from docx import Document
+from PyPDF2 import PdfReader
 
 from config import PAGE_TYPE_SCHEMAS
 
@@ -247,16 +248,32 @@ def render_page_preview(page_type: str, page_json: Dict[str, Any]) -> None:
 
 
 def load_text_from_upload(uploaded_file) -> str:
-    """Load text content from an uploaded TXT or DOCX file."""
+    """Load text content from an uploaded TXT, DOCX, or PDF file."""
     if uploaded_file is None:
         return ""
 
     name = (uploaded_file.name or "").lower()
+
+    try:
+        uploaded_file.seek(0)
+    except Exception:
+        pass
+
     if name.endswith(".txt"):
         return uploaded_file.read().decode("utf-8", errors="ignore")
+
     if name.endswith(".docx"):
         document = Document(uploaded_file)
         return "\n".join(p.text for p in document.paragraphs)
+
+    if name.endswith(".pdf"):
+        try:
+            pdf_reader = PdfReader(uploaded_file)
+            pages_text = [page.extract_text() or "" for page in pdf_reader.pages]
+            return "\n".join(pages_text).strip()
+        except Exception:
+            return ""
+
     return ""
 
 
