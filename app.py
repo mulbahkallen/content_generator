@@ -151,7 +151,7 @@ def main():
 
             st.header("2. Sitemap / Pages")
 
-            allowed_page_types = ["home", "service", "about", "location"]
+            allowed_page_types = ["home", "service", "sub service", "about", "location"]
 
             st.caption(
                 "Upload a sitemap CSV with columns: `slug`, `page_name`, `page_type` "
