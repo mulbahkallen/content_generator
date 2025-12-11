@@ -56,6 +56,147 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+INDUSTRY_OPTIONS: List[str] = [
+    "General Medicine",
+    "Internal Medicine",
+    "Family Medicine",
+    "Concierge Medicine",
+    "Urgent Care",
+    "Telemedicine",
+    "Primary Care",
+    "Plastic Surgery",
+    "Cosmetic Surgery",
+    "Aesthetic Medicine",
+    "Medical Spa (MedSpa)",
+    "Botox & Fillers",
+    "Facial Rejuvenation",
+    "Anti-Aging Medicine",
+    "Cosmetic Dermatology",
+    "Laser & Skin Treatments",
+    "Body Contouring",
+    "General Dentistry",
+    "Cosmetic Dentistry",
+    "Pediatric Dentistry",
+    "Orthodontics",
+    "Periodontics",
+    "Endodontics",
+    "Prosthodontics",
+    "Oral Surgery",
+    "Dental Implants",
+    "TMJ & Bite Correction",
+    "General Surgery",
+    "Bariatric Surgery",
+    "Colorectal Surgery",
+    "Orthopedic Surgery",
+    "Spine Surgery",
+    "Vascular Surgery",
+    "Cardiothoracic Surgery",
+    "ENT Surgery",
+    "Reconstructive Surgery",
+    "Obstetrics & Gynecology (OB-GYN)",
+    "Fertility / Reproductive Medicine",
+    "Women’s Health Clinics",
+    "Men’s Health Clinics",
+    "Hormone Replacement Therapy (HRT)",
+    "Testosterone Therapy",
+    "Pelvic Floor Therapy",
+    "Sexual Wellness",
+    "Regenerative Medicine",
+    "Functional Medicine",
+    "Integrative Medicine",
+    "Holistic Medicine",
+    "Stem Cell Therapy",
+    "PRP (Platelet-Rich Plasma)",
+    "IV Therapy",
+    "NAD+ Therapy",
+    "Biohacking Clinics",
+    "Peptide Therapy",
+    "Pain Management",
+    "Interventional Pain",
+    "Neurology",
+    "Neurosurgery",
+    "Spine Center",
+    "Migraine Clinic",
+    "Headache Specialist",
+    "Movement Disorders",
+    "Gastroenterology (GI)",
+    "Colorectal Health",
+    "Digestive Health Clinics",
+    "Weight Loss Clinics",
+    "Medical Weight Management",
+    "Bariatric Medicine",
+    "Psychiatry",
+    "Psychology",
+    "Therapy & Counseling",
+    "ADHD Clinics",
+    "Depression & Anxiety Centers",
+    "Ketamine Clinics",
+    "TMS Therapy",
+    "Cardiology",
+    "Vascular Medicine",
+    "Vein Clinics",
+    "Varicose Vein Treatment",
+    "General Dermatology",
+    "Cosmetic Dermatology",
+    "MOHS Surgery",
+    "Skin Cancer Clinics",
+    "Acne & Rosacea Clinics",
+    "Hair Restoration",
+    "Ophthalmology",
+    "Optometry",
+    "LASIK & Refractive Surgery",
+    "Otolaryngology (ENT)",
+    "Audiology",
+    "Hearing Aid Centers",
+    "Sinus & Allergy Clinics",
+    "Pediatrics",
+    "Pediatric Dentistry",
+    "Pediatric Neurology",
+    "Pediatric ENT",
+    "Adolescent Behavioral Health",
+    "Urology",
+    "Erectile Dysfunction Clinics",
+    "Nephrology",
+    "Endocrinology",
+    "Diabetes Management",
+    "Pulmonology",
+    "Sleep Medicine",
+    "CPAP Alternatives",
+    "Sleep Apnea Clinics",
+    "Physical Therapy",
+    "Occupational Therapy",
+    "Sports Medicine",
+    "Chiropractic",
+    "Physical Rehabilitation",
+    "Athletic Performance Centers",
+    "Post-Surgical Rehab",
+    "Allergy & Immunology",
+    "Rheumatology",
+    "Infectious Disease",
+    "Travel Medicine",
+    "Genetic Counseling",
+    "Wound Care Centers",
+    "Concierge Pediatrics",
+    "Concierge OB-GYN",
+    "Suboxone / MAT Clinics",
+    "Aesthetics + Wellness Hybrids",
+    "Imaging & Diagnostic Services",
+    "Medical Imaging Center",
+    "Diagnostic Radiology",
+    "MRI Center",
+    "CT Scan Center",
+    "PET Scan Center",
+    "X-Ray Services",
+    "Ultrasound Center",
+    "Breast Imaging / Mammography",
+    "DEXA Bone Density Testing",
+    "Mobile Imaging Services",
+    "Interventional Radiology (IR)",
+    "Cardiac Imaging",
+    "Nuclear Medicine",
+]
+CUSTOM_INDUSTRY_OPTION = "Other / Custom"
+
 
 with st.sidebar:
     st.subheader("Quick start")
@@ -124,7 +265,36 @@ def main():
             brand_name = st.text_input(
                 "Brand / Business Name", value="", key="brand_name"
             )
-            industry = st.text_input("Industry / Niche", value="", key="industry")
+            industry_option_list = INDUSTRY_OPTIONS + [CUSTOM_INDUSTRY_OPTION]
+            saved_industry = st.session_state.get("industry", INDUSTRY_OPTIONS[0])
+            default_industry_choice = (
+                saved_industry
+                if saved_industry in industry_option_list
+                else CUSTOM_INDUSTRY_OPTION
+            )
+            industry_choice = st.selectbox(
+                "Industry / Niche",
+                options=industry_option_list,
+                index=industry_option_list.index(default_industry_choice),
+                key="industry_choice",
+                help="Search or pick the closest match; choose Other to type a custom niche.",
+            )
+            industry_custom = st.text_input(
+                "Custom industry / niche",
+                value=(
+                    saved_industry
+                    if default_industry_choice == CUSTOM_INDUSTRY_OPTION
+                    else st.session_state.get("industry_custom", "")
+                ),
+                key="industry_custom",
+                disabled=industry_choice != CUSTOM_INDUSTRY_OPTION,
+            )
+            industry = (
+                industry_custom.strip()
+                if industry_choice == CUSTOM_INDUSTRY_OPTION
+                else industry_choice
+            )
+            st.session_state["industry"] = industry
             location = st.text_input(
                 "Primary Location (city, state/region)", value="", key="location"
             )
@@ -151,7 +321,7 @@ def main():
 
             st.header("2. Sitemap / Pages")
 
-            allowed_page_types = ["home", "service", "about", "location"]
+            allowed_page_types = ["home", "service", "sub service", "about", "location"]
 
             st.caption(
                 "Upload a sitemap CSV with columns: `slug`, `page_name`, `page_type` "
@@ -253,8 +423,8 @@ def main():
             st.header("5. Golden Rules & Assets")
             st.caption("Embed the golden rule set once to reuse across pages.")
             golden_rule_file = st.file_uploader(
-                "Golden rule set (TXT or DOCX)",
-                type=["txt", "docx"],
+                "Golden rule set (TXT, DOCX, or PDF)",
+                type=["txt", "docx", "pdf"],
                 key="golden_rule_upload",
             )
             golden_rule_text = st.text_area(
@@ -281,12 +451,12 @@ def main():
                     except Exception as exc:
                         st.error(f"Failed to embed golden rules: {exc}")
 
-            st.caption("Upload brand and onboarding references (plain text or DOCX)")
+            st.caption("Upload brand and onboarding references (plain text, DOCX, or PDF)")
             brand_book_upload = st.file_uploader(
-                "Brand book copy", type=["txt", "docx"], key="brand_book_uploader"
+                "Brand book copy", type=["txt", "docx", "pdf"], key="brand_book_uploader"
             )
             onboarding_upload = st.file_uploader(
-                "Client onboarding form", type=["txt", "docx"], key="onboarding_uploader"
+                "Client onboarding form", type=["txt", "docx", "pdf"], key="onboarding_uploader"
             )
             brand_book_text = load_text_from_upload(brand_book_upload)
             onboarding_text = load_text_from_upload(onboarding_upload)
@@ -517,8 +687,8 @@ def main():
         lab_rule_col1, lab_rule_col2 = st.columns([1, 1.2])
         with lab_rule_col1:
             lab_golden_rule_upload = st.file_uploader(
-                "Golden rule set (TXT or DOCX)",
-                type=["txt", "docx"],
+                "Golden rule set (TXT, DOCX, or PDF)",
+                type=["txt", "docx", "pdf"],
                 key="lab_golden_rule_upload",
             )
         with lab_rule_col2:
@@ -553,8 +723,8 @@ def main():
         asset_col1, asset_col2 = st.columns(2)
         with asset_col1:
             lab_brand_book_upload = st.file_uploader(
-                "Brand book (TXT or DOCX)",
-                type=["txt", "docx"],
+                "Brand book (TXT, DOCX, or PDF)",
+                type=["txt", "docx", "pdf"],
                 key="lab_brand_book_upload",
             )
             lab_brand_book_text = st.text_area(
@@ -565,8 +735,8 @@ def main():
             )
         with asset_col2:
             lab_onboarding_upload = st.file_uploader(
-                "Client onboarding form (TXT or DOCX)",
-                type=["txt", "docx"],
+                "Client onboarding form (TXT, DOCX, or PDF)",
+                type=["txt", "docx", "pdf"],
                 key="lab_onboarding_upload",
             )
             lab_onboarding_text = st.text_area(
@@ -612,11 +782,40 @@ def main():
                     value=default_brand if use_builder_defaults else "Sample Brand",
                     key="lab_brand",
                 )
-                lab_industry = st.text_input(
-                    "Industry / Niche",
-                    value=default_industry if use_builder_defaults else "Consulting",
-                    key="lab_industry",
+                lab_industry_base = (
+                    default_industry
+                    if use_builder_defaults
+                    else st.session_state.get("lab_industry", INDUSTRY_OPTIONS[0])
                 )
+                lab_industry_options = INDUSTRY_OPTIONS + [CUSTOM_INDUSTRY_OPTION]
+                lab_industry_default_choice = (
+                    lab_industry_base
+                    if lab_industry_base in lab_industry_options
+                    else CUSTOM_INDUSTRY_OPTION
+                )
+                lab_industry_choice = st.selectbox(
+                    "Industry / Niche",
+                    options=lab_industry_options,
+                    index=lab_industry_options.index(lab_industry_default_choice),
+                    key="lab_industry_choice",
+                    help="Search and select an industry; choose Other for a custom entry.",
+                )
+                lab_industry_custom = st.text_input(
+                    "Custom industry / niche",
+                    value=(
+                        lab_industry_base
+                        if lab_industry_default_choice == CUSTOM_INDUSTRY_OPTION
+                        else st.session_state.get("lab_industry_custom", "")
+                    ),
+                    key="lab_industry_custom",
+                    disabled=lab_industry_choice != CUSTOM_INDUSTRY_OPTION,
+                )
+                lab_industry = (
+                    lab_industry_custom.strip()
+                    if lab_industry_choice == CUSTOM_INDUSTRY_OPTION
+                    else lab_industry_choice
+                )
+                st.session_state["lab_industry"] = lab_industry
                 lab_voice = st.text_area(
                     "Voice & tone",
                     value=default_voice
