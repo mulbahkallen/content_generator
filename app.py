@@ -674,9 +674,6 @@ def main():
             lab_topic = st.text_input(
                 "Page topic / subject", value="Medical service focus", key="lab_topic"
             )
-            lab_top_rules = st.slider(
-                "Golden rule chunks to retrieve", min_value=5, max_value=20, value=12, step=1
-            )
             lab_style_profile = st.selectbox(
                 "Style profile for test run",
                 options=STYLE_PROFILE_OPTIONS,
@@ -697,18 +694,8 @@ def main():
             lab_paramount_list = parse_keywords(lab_paramount_keywords)
             lab_primary_list = parse_keywords(lab_primary_keywords)
             embedded_rules = st.session_state.get("golden_rule_chunks", [])
-            brand_book_text = (lab_brand_book_text or "").strip()
-            onboarding_text = (lab_onboarding_text or "").strip()
-
-            if brand_book_text:
-                st.session_state["brand_book_text"] = brand_book_text
-            else:
-                brand_book_text = st.session_state.get("brand_book_text", "")
-
-            if onboarding_text:
-                st.session_state["onboarding_text"] = onboarding_text
-            else:
-                onboarding_text = st.session_state.get("onboarding_text", "")
+            brand_book_text = st.session_state.get("brand_book_text", "")
+            onboarding_text = st.session_state.get("onboarding_text", "")
 
             lab_brand_info = BrandInfo(
                 name=lab_brand.strip(),
@@ -747,7 +734,6 @@ def main():
                     brand_book=brand_book_text,
                     onboarding_notes=onboarding_text,
                     golden_rule_chunks=embedded_rules,
-                    top_rules=lab_top_rules,
                 )
                 st.session_state["lab_result"] = {
                     "outline": None,
