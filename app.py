@@ -56,6 +56,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+]
+
 INDUSTRY_OPTIONS: List[str] = [
     "General Medicine",
     "Internal Medicine",
@@ -136,7 +138,6 @@ INDUSTRY_OPTIONS: List[str] = [
     "Vascular Medicine",
     "Vein Clinics",
     "Varicose Vein Treatment",
-    "Interventional Radiology (IR)",
     "General Dermatology",
     "Cosmetic Dermatology",
     "MOHS Surgery",
@@ -181,6 +182,20 @@ INDUSTRY_OPTIONS: List[str] = [
     "Concierge OB-GYN",
     "Suboxone / MAT Clinics",
     "Aesthetics + Wellness Hybrids",
+    "Imaging & Diagnostic Services",
+    "Medical Imaging Center",
+    "Diagnostic Radiology",
+    "MRI Center",
+    "CT Scan Center",
+    "PET Scan Center",
+    "X-Ray Services",
+    "Ultrasound Center",
+    "Breast Imaging / Mammography",
+    "DEXA Bone Density Testing",
+    "Mobile Imaging Services",
+    "Interventional Radiology (IR)",
+    "Cardiac Imaging",
+    "Nuclear Medicine",
 ]
 CUSTOM_INDUSTRY_OPTION = "Other / Custom"
 
