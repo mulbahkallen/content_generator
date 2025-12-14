@@ -376,6 +376,12 @@ def init_session_state():
         st.session_state["onboarding_text"] = ""
     if "home_page_text" not in st.session_state:
         st.session_state["home_page_text"] = ""
+    if "lab_doc_keyword_suggestions" not in st.session_state:
+        st.session_state["lab_doc_keyword_suggestions"] = {}
+    if "lab_generated_service_keywords" not in st.session_state:
+        st.session_state["lab_generated_service_keywords"] = []
+    if "lab_services_raw" not in st.session_state:
+        st.session_state["lab_services_raw"] = ""
 
 def main():
     init_session_state()
@@ -1212,6 +1218,142 @@ def main():
                 lab_home_page_text = (lab_home_page_text + "\n" + uploaded_home_page).strip()
                 st.session_state["home_page_text"] = lab_home_page_text
 
+        lab_supporting_doc_text = "\n\n".join(
+            [
+                t
+                for t in [lab_brand_book_text, lab_onboarding_text, lab_home_page_text]
+                if t.strip()
+            ]
+        ).strip()
+
+        st.subheader("QA lab keyword helpers")
+        st.caption(
+            "Optionally mine your references and services to prefill lab keyword inputs."
+        )
+
+        helper_doc_col1, helper_doc_col2 = st.columns(2)
+        with helper_doc_col1:
+            lab_doc_kw_help = st.button(
+                "Generate lab keywords from documents", use_container_width=True
+            )
+        with helper_doc_col2:
+            lab_apply_doc_kw = st.button(
+                "Apply doc keywords to lab inputs", use_container_width=True
+            )
+
+        if lab_doc_kw_help:
+            if not lab_supporting_doc_text:
+                st.warning("Upload or paste supporting documents to extract keywords first.")
+            else:
+                with st.spinner("Mining documents for QA lab keywords..."):
+                    try:
+                        lab_doc_keywords = generate_document_keywords(
+                            client,
+                            brand_name=st.session_state.get("brand_name", "Sample Brand"),
+                            industry=st.session_state.get("industry", "Consulting"),
+                            location=(
+                                st.session_state.get("lab_location")
+                                or st.session_state.get("location", "")
+                            ),
+                            audience_intent=st.session_state.get(
+                                "lab_intent",
+                                st.session_state.get("audience_intent", "Informational"),
+                            ),
+                            page_goal=st.session_state.get(
+                                "lab_goal", st.session_state.get("page_goal", "")
+                            ),
+                            services=parse_keywords(
+                                st.session_state.get("lab_services_raw")
+                                or st.session_state.get("services_raw", "")
+                            ),
+                            supporting_text=lab_supporting_doc_text,
+                            model_name=st.session_state.get("model_name", DEFAULT_MODEL_NAME),
+                        )
+                        st.session_state["lab_doc_keyword_suggestions"] = lab_doc_keywords
+                        st.success("Keyword ideas generated for the QA lab inputs.")
+                    except Exception as exc:
+                        st.error(f"Failed to generate document keywords: {exc}")
+
+        lab_doc_suggestions = st.session_state.get("lab_doc_keyword_suggestions", {})
+        if lab_doc_suggestions:
+            with st.expander("Document-derived lab keyword ideas", expanded=False):
+                paramount = lab_doc_suggestions.get("paramount_keywords", [])
+                primary = lab_doc_suggestions.get("primary_keywords", [])
+                if paramount:
+                    st.markdown("**Paramount ideas:** " + ", ".join(paramount))
+                if primary:
+                    st.markdown("**Primary ideas:** " + ", ".join(primary))
+                if not paramount and not primary:
+                    st.caption("No keyword suggestions available yet.")
+
+        if lab_apply_doc_kw and lab_doc_suggestions:
+            st.session_state["lab_primary_keywords"] = "\n".join(
+                lab_doc_suggestions.get("primary_keywords", [])
+            )
+            st.session_state["lab_paramount_keywords"] = "\n".join(
+                lab_doc_suggestions.get("paramount_keywords", [])
+            )
+            st.success("Applied document keyword recommendations to the QA lab inputs.")
+
+        st.subheader("Service keyword helper (lab)")
+        lab_services_raw = st.text_area(
+            "List of services (one per line or comma separated)",
+            value=st.session_state.get("lab_services_raw", st.session_state.get("services_raw", "")),
+            key="lab_services_raw",
+            help="Provide services to generate location-ready primary keyword ideas for the lab run.",
+        )
+        lab_service_cols = st.columns(2)
+        with lab_service_cols[0]:
+            lab_generate_services = st.button(
+                "Generate lab service keywords", use_container_width=True
+            )
+        with lab_service_cols[1]:
+            lab_apply_service_kw = st.button(
+                "Use generated keywords for lab", use_container_width=True
+            )
+
+        if lab_generate_services:
+            service_list = parse_keywords(lab_services_raw)
+            lab_location_input = st.session_state.get(
+                "lab_location", st.session_state.get("location", "")
+            )
+            if not service_list:
+                st.warning("Provide at least one service to generate keywords.")
+            elif not lab_location_input:
+                st.warning("Add a primary location to shape the keyword phrasing.")
+            else:
+                with st.spinner("Creating lab primary keyword ideas..."):
+                    try:
+                        generated_keywords = generate_service_keywords(
+                            client,
+                            services=service_list,
+                            location=lab_location_input,
+                            audience_intent=st.session_state.get(
+                                "lab_intent",
+                                st.session_state.get("audience_intent", "Informational"),
+                            ),
+                            model_name=st.session_state.get("model_name", DEFAULT_MODEL_NAME),
+                        )
+                        st.session_state["lab_generated_service_keywords"] = generated_keywords
+                        st.success("Created keyword ideas using your service list and location.")
+                    except Exception as exc:
+                        st.error(f"Failed to generate service keywords: {exc}")
+
+        lab_generated_service_keywords = st.session_state.get(
+            "lab_generated_service_keywords", []
+        )
+        if lab_generated_service_keywords:
+            st.caption(
+                "Generated keywords follow the 'best + service + location' search pattern."
+            )
+            st.write("\n".join(f"• {kw}" for kw in lab_generated_service_keywords))
+
+        if lab_apply_service_kw and lab_generated_service_keywords:
+            st.session_state["lab_primary_keywords"] = "\n".join(
+                lab_generated_service_keywords
+            )
+            st.success("Primary keyword list updated from generated lab suggestions.")
+
         with st.form("qa_lab_form"):
             use_builder_defaults = st.checkbox(
                 "Prefill with Build tab brand info when available", value=True
@@ -1326,12 +1468,18 @@ def main():
             )
             lab_paramount_keywords = st.text_area(
                 "Paramount keywords (comma/newline separated)",
-                value=", ".join(st.session_state.get("paramount_kw_cache", [])),
+                value=st.session_state.get(
+                    "lab_paramount_keywords",
+                    ", ".join(st.session_state.get("paramount_kw_cache", [])),
+                ),
                 key="lab_paramount_keywords",
             )
             lab_primary_keywords = st.text_area(
                 "Primary keywords (comma/newline separated)",
-                value=", ".join(st.session_state.get("primary_kw_cache", [])),
+                value=st.session_state.get(
+                    "lab_primary_keywords",
+                    ", ".join(st.session_state.get("primary_kw_cache", [])),
+                ),
                 key="lab_primary_keywords",
             )
             lab_topic = st.text_input(
