@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 import pandas as pd
 import streamlit as st
 
-from config import DEFAULT_MODEL_NAME, MODEL_OPTIONS, STYLE_PROFILE_OPTIONS
+from settings import DEFAULT_MODEL_NAME, MODEL_OPTIONS, STYLE_PROFILE_OPTIONS
 from openai_client import get_openai_client
 from utils import (
     BrandInfo,
