@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 import streamlit as st
 from openai import OpenAI
 
-from config import MODEL_NAME
+from config import DEFAULT_MODEL_NAME
 
 
 def get_api_key() -> Optional[str]:
@@ -46,11 +46,13 @@ def get_openai_client() -> OpenAI:
     return client
 
 
-def call_openai_json(client: OpenAI, messages: List[Dict[str, str]]) -> str:
+def call_openai_json(
+    client: OpenAI, messages: List[Dict[str, str]], model_name: str = DEFAULT_MODEL_NAME
+) -> str:
     """Call the OpenAI Responses API and return the raw JSON string output."""
     try:
         response = client.responses.create(
-            model=MODEL_NAME,
+            model=model_name,
             input=messages,
         )
     except Exception as exc:

@@ -4,7 +4,12 @@ from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
-from config import GLOBAL_SYSTEM_PROMPT, MEDICAL_PAGE_SCHEMA, OUTLINE_SCHEMA
+from config import (
+    DEFAULT_MODEL_NAME,
+    GLOBAL_SYSTEM_PROMPT,
+    MEDICAL_PAGE_SCHEMA,
+    OUTLINE_SCHEMA,
+)
 from examples import get_example_for
 from golden_rules import RuleChunk, retrieve_relevant_rules
 from utils import (
@@ -25,6 +30,7 @@ def generate_outline(
     page: PageDefinition,
     seo_entry: Optional[SEOEntry],
     style_profile: str,
+    model_name: str = DEFAULT_MODEL_NAME,
 ) -> Dict[str, Any]:
     """
     Generate a structured outline for the given page.
@@ -72,7 +78,7 @@ Return ONLY a JSON object matching the outline schema.
         },
     ]
 
-    raw = call_openai_json(client, messages)
+    raw = call_openai_json(client, messages, model_name=model_name)
     outline_json = safe_json_loads(raw)
     validate_against_schema(OUTLINE_SCHEMA, outline_json)
     return outline_json
@@ -85,6 +91,7 @@ def generate_draft(
     seo_entry: Optional[SEOEntry],
     style_profile: str,
     outline: Dict[str, Any],
+    model_name: str = DEFAULT_MODEL_NAME,
 ) -> Dict[str, Any]:
     """
     Generate the first full draft of the page's copy as structured JSON
@@ -144,7 +151,7 @@ Task:
         },
     ]
 
-    raw = call_openai_json(client, messages)
+    raw = call_openai_json(client, messages, model_name=model_name)
     draft_json = safe_json_loads(raw)
     validate_against_schema(page_schema, draft_json)
     return draft_json
@@ -157,6 +164,7 @@ def refine_draft(
     seo_entry: Optional[SEOEntry],
     style_profile: str,
     draft_json: Dict[str, Any],
+    model_name: str = DEFAULT_MODEL_NAME,
 ) -> Dict[str, Any]:
     """
     Refine the draft JSON for SEO and copy quality while preserving structure.
@@ -213,7 +221,7 @@ Return ONLY the refined JSON object with the SAME structure.
         },
     ]
 
-    raw = call_openai_json(client, messages)
+    raw = call_openai_json(client, messages, model_name=model_name)
     refined_json = safe_json_loads(raw)
     try:
         validate_against_schema(page_schema, refined_json)
@@ -235,7 +243,10 @@ def generate_medical_page(
     onboarding_notes: str,
     home_page_copy: str,
     golden_rule_chunks: List[RuleChunk],
+    golden_rule_text: str = "",
+    golden_rule_mode: str = "retrieval",
     top_rules: int = 12,
+    model_name: str = DEFAULT_MODEL_NAME,
 ) -> Dict[str, Any]:
     """Generate structured medical page copy using golden rule retrieval."""
 
@@ -243,8 +254,16 @@ def generate_medical_page(
     supporting_kws = seo_entry.supporting_keywords if seo_entry else []
     target_keywords = list({kw: None for kw in primary_keywords + supporting_kws}.keys())
     topic_query = f"{page.page_type} page about {topic or page.page_name} for {brand_info.industry} in {brand_info.location}"
-    selected_rules = retrieve_relevant_rules(client, topic_query, golden_rule_chunks, top_n=top_rules)
-    rule_text = "\n\n".join(f"- {rc.text}" for rc in selected_rules)
+    use_full_rules = golden_rule_mode == "full_text" and golden_rule_text.strip()
+    selected_rules: List[RuleChunk] = []
+
+    if use_full_rules:
+        rule_text = golden_rule_text.strip()
+    else:
+        selected_rules = retrieve_relevant_rules(
+            client, topic_query, golden_rule_chunks, top_n=top_rules
+        )
+        rule_text = "\n\n".join(f"- {rc.text}" for rc in selected_rules)
 
     schema_block = json.dumps(MEDICAL_PAGE_SCHEMA, indent=2)
 
@@ -291,5 +310,5 @@ Also surface a compact diagnostics object capturing: which rule chunks were used
         },
     ]
 
-    raw = call_openai_json(client, messages)
+    raw = call_openai_json(client, messages, model_name=model_name)
     return safe_json_loads(raw)
