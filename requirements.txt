@@ -5,3 +5,4 @@ tiktoken
 python-docx
 numpy
 PyPDF2
+pytest

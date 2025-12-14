@@ -13,6 +13,8 @@ from utils import (
     SEOEntry,
     get_page_schema,
     safe_json_loads,
+    SchemaValidationError,
+    validate_against_schema,
 )
 from openai_client import call_openai_json
 
@@ -71,7 +73,9 @@ Return ONLY a JSON object matching the outline schema.
     ]
 
     raw = call_openai_json(client, messages)
-    return safe_json_loads(raw)
+    outline_json = safe_json_loads(raw)
+    validate_against_schema(OUTLINE_SCHEMA, outline_json)
+    return outline_json
 
 
 def generate_draft(
@@ -141,7 +145,9 @@ Task:
     ]
 
     raw = call_openai_json(client, messages)
-    return safe_json_loads(raw)
+    draft_json = safe_json_loads(raw)
+    validate_against_schema(page_schema, draft_json)
+    return draft_json
 
 
 def refine_draft(
@@ -208,7 +214,12 @@ Return ONLY the refined JSON object with the SAME structure.
     ]
 
     raw = call_openai_json(client, messages)
-    return safe_json_loads(raw)
+    refined_json = safe_json_loads(raw)
+    try:
+        validate_against_schema(page_schema, refined_json)
+    except SchemaValidationError as exc:
+        raise SchemaValidationError(f"Refined draft schema mismatch: {exc}") from exc
+    return refined_json
 
 
 def generate_medical_page(

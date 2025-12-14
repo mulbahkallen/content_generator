@@ -181,6 +181,53 @@ def safe_json_loads(raw: str) -> Any:
         raise
 
 
+class SchemaValidationError(ValueError):
+    """Raised when generated JSON does not match the expected schema."""
+
+
+def validate_against_schema(schema: Any, payload: Any, path: str = "$") -> None:
+    """
+    Validate that ``payload`` mirrors the structure of ``schema``.
+
+    The check is intentionally lightweight and focuses on presence and nesting of
+    keys/collections rather than strict typing. Raises SchemaValidationError on
+    mismatch to surface actionable feedback to callers before rendering.
+    """
+
+    def _validate(expected: Any, value: Any, current_path: str) -> None:
+        if isinstance(expected, dict):
+            if not isinstance(value, dict):
+                raise SchemaValidationError(
+                    f"Expected object at {current_path}, got {type(value).__name__}"
+                )
+            for key, sub_schema in expected.items():
+                if key not in value:
+                    raise SchemaValidationError(
+                        f"Missing key '{key}' at {current_path}"
+                    )
+                _validate(sub_schema, value[key], f"{current_path}.{key}")
+            return
+
+        if isinstance(expected, list):
+            if not isinstance(value, list):
+                raise SchemaValidationError(
+                    f"Expected list at {current_path}, got {type(value).__name__}"
+                )
+            if expected:
+                exemplar = expected[0]
+                for idx, item in enumerate(value):
+                    _validate(exemplar, item, f"{current_path}[{idx}]")
+            return
+
+        # Primitive exemplar: just ensure presence and non-null value
+        if value is None or (isinstance(value, str) and not value.strip()):
+            raise SchemaValidationError(
+                f"Expected non-empty value at {current_path}, got '{value}'"
+            )
+
+    _validate(schema, payload, path)
+
+
 def build_site_export(pages_results: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Build a combined export structure for all pages.
