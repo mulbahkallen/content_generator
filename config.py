@@ -2,7 +2,13 @@
 import json
 from typing import Dict, Any
 
-MODEL_NAME = "gpt-4.1-mini"  # easy to change in one place
+DEFAULT_MODEL_NAME = "gpt-4.1-mini"  # easy to change in one place
+MODEL_OPTIONS = [
+    "gpt-4.1-mini",
+    "gpt-4.1",
+    "gpt-4o-mini",
+    "gpt-4o",
+]
 
 STYLE_PROFILE_OPTIONS = [
     "Default agency style",

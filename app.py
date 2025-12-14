@@ -5,7 +5,7 @@ from typing import List, Dict, Any
 import pandas as pd
 import streamlit as st
 
-from config import STYLE_PROFILE_OPTIONS
+from config import DEFAULT_MODEL_NAME, MODEL_OPTIONS, STYLE_PROFILE_OPTIONS
 from openai_client import get_openai_client
 from utils import (
     BrandInfo,
@@ -227,6 +227,12 @@ def init_session_state():
         st.session_state["golden_rule_chunks"] = []
     if "golden_rule_text" not in st.session_state:
         st.session_state["golden_rule_text"] = ""
+    if "golden_rule_mode" not in st.session_state:
+        st.session_state["golden_rule_mode"] = "retrieval"
+    if "golden_rule_top_n" not in st.session_state:
+        st.session_state["golden_rule_top_n"] = 12
+    if "model_name" not in st.session_state:
+        st.session_state["model_name"] = DEFAULT_MODEL_NAME
     if "brand_book_text" not in st.session_state:
         st.session_state["brand_book_text"] = ""
     if "onboarding_text" not in st.session_state:
@@ -246,6 +252,23 @@ def main():
         """,
         unsafe_allow_html=True,
     )
+
+    with st.sidebar:
+        st.subheader("Model & runtime settings")
+        current_model = st.session_state.get("model_name", DEFAULT_MODEL_NAME)
+        default_index = (
+            MODEL_OPTIONS.index(current_model)
+            if current_model in MODEL_OPTIONS
+            else MODEL_OPTIONS.index(DEFAULT_MODEL_NAME)
+        )
+        selected_model = st.selectbox(
+            "OpenAI model",
+            options=MODEL_OPTIONS,
+            index=default_index,
+            key="model_name_select",
+            help="Choose which GPT model to run for generation steps.",
+        )
+        st.session_state["model_name"] = selected_model
 
     # Initialize OpenAI client
     try:
@@ -427,6 +450,35 @@ def main():
 
             st.header("5. Golden Rules & Assets")
             st.caption("Embed the golden rule set once to reuse across pages.")
+
+            golden_rule_mode = st.radio(
+                "Golden rule application",
+                options=["retrieval", "full_text"],
+                format_func=lambda opt: (
+                    "Retrieve top relevant chunks"
+                    if opt == "retrieval"
+                    else "Inject the full rule set (no chunking)"
+                ),
+                index=0 if st.session_state.get("golden_rule_mode") == "retrieval" else 1,
+                key="golden_rule_mode_radio",
+                help="Use chunked retrieval for concise prompts or inject the full text when you need every rule applied.",
+            )
+            st.session_state["golden_rule_mode"] = golden_rule_mode
+
+            if golden_rule_mode == "retrieval":
+                top_n = st.slider(
+                    "How many rule chunks to inject",
+                    min_value=3,
+                    max_value=24,
+                    value=st.session_state.get("golden_rule_top_n", 12),
+                    step=1,
+                    help="Controls how many embedded rule chunks are pulled into each prompt.",
+                )
+                st.session_state["golden_rule_top_n"] = top_n
+            else:
+                st.info(
+                    "Full rule set will be sent as one block. Ensure it fits the selected model's context window."
+                )
             golden_rule_file = st.file_uploader(
                 "Golden rule set (TXT, DOCX, or PDF)",
                 type=["txt", "docx", "pdf"],
@@ -445,14 +497,21 @@ def main():
                 if not combined_rule_text:
                     st.error("Please provide golden rule content to embed.")
                 else:
-                    chunks = split_into_chunks(combined_rule_text)
                     try:
-                        embedded = embed_rule_chunks(client, chunks)
+                        if golden_rule_mode == "full_text":
+                            embedded = embed_rule_chunks(client, [combined_rule_text])
+                            st.success(
+                                "Stored full golden rule set. It will be injected without chunking."
+                            )
+                        else:
+                            chunks = split_into_chunks(combined_rule_text)
+                            embedded = embed_rule_chunks(client, chunks)
+                            st.success(
+                                f"Embedded {len(embedded)} golden rule chunk(s). Reuse for all generations."
+                            )
+
                         st.session_state["golden_rule_chunks"] = embedded
                         st.session_state["golden_rule_text"] = combined_rule_text
-                        st.success(
-                            f"Embedded {len(embedded)} golden rule chunk(s). Reuse for all generations."
-                        )
                     except Exception as exc:
                         st.error(f"Failed to embed golden rules: {exc}")
 
@@ -632,7 +691,16 @@ def main():
                                     onboarding_notes=onboarding_text,
                                     home_page_copy=home_page_text,
                                     golden_rule_chunks=embedded_rules,
-                                    top_rules=12,
+                                    golden_rule_text=st.session_state.get(
+                                        "golden_rule_text", ""
+                                    ),
+                                    golden_rule_mode=st.session_state.get(
+                                        "golden_rule_mode", "retrieval"
+                                    ),
+                                    top_rules=st.session_state.get("golden_rule_top_n", 12),
+                                    model_name=st.session_state.get(
+                                        "model_name", DEFAULT_MODEL_NAME
+                                    ),
                                 )
                             except Exception as exc:
                                 st.error(
@@ -749,6 +817,14 @@ def main():
                 key="lab_golden_rule_text",
             )
 
+        current_rule_mode = st.session_state.get("golden_rule_mode", "retrieval")
+        if current_rule_mode == "retrieval":
+            st.caption(
+                f"Using retrieval mode with top {st.session_state.get('golden_rule_top_n', 12)} chunks per prompt."
+            )
+        else:
+            st.caption("Full rule set mode is active; the entire text will be injected.")
+
         if st.button("Embed golden rules for lab", use_container_width=True):
             combined_rule_text = (lab_golden_rule_text or "") + "\n" + load_text_from_upload(
                 lab_golden_rule_upload
@@ -758,14 +834,18 @@ def main():
                 st.error("Please provide golden rule content to embed.")
             else:
                 try:
-                    embedded = embed_rule_chunks(
-                        client, split_into_chunks(combined_rule_text)
-                    )
+                    if current_rule_mode == "full_text":
+                        embedded = embed_rule_chunks(client, [combined_rule_text])
+                        st.success("Stored full golden rule set for the lab.")
+                    else:
+                        embedded = embed_rule_chunks(
+                            client, split_into_chunks(combined_rule_text)
+                        )
+                        st.success(
+                            f"Embedded {len(embedded)} golden rule chunk(s) for the lab."
+                        )
                     st.session_state["golden_rule_chunks"] = embedded
                     st.session_state["golden_rule_text"] = combined_rule_text
-                    st.success(
-                        f"Embedded {len(embedded)} golden rule chunk(s) for the lab."
-                    )
                 except Exception as exc:
                     st.error(f"Failed to embed golden rules: {exc}")
 
@@ -1002,6 +1082,12 @@ def main():
                     onboarding_notes=onboarding_text,
                     home_page_copy=home_page_text,
                     golden_rule_chunks=embedded_rules,
+                    golden_rule_text=st.session_state.get("golden_rule_text", ""),
+                    golden_rule_mode=st.session_state.get(
+                        "golden_rule_mode", "retrieval"
+                    ),
+                    top_rules=st.session_state.get("golden_rule_top_n", 12),
+                    model_name=st.session_state.get("model_name", DEFAULT_MODEL_NAME),
                 )
                 st.session_state["lab_result"] = {
                     "outline": None,
