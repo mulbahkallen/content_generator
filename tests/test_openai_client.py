@@ -25,3 +25,15 @@ def test_sanitize_messages_preserves_original_and_deduplicates_content():
 
     assert sanitized[0]["content"] == "Repeat\nUnique"
     assert messages[0]["content"] == "Repeat\nRepeat\nUnique"
+
+
+def test_sanitize_messages_dedupes_across_messages():
+    messages = [
+        {"role": "system", "content": "Instruction A\nInstruction B"},
+        {"role": "user", "content": "Instruction A\nInstruction C"},
+    ]
+
+    sanitized = _sanitize_messages(messages)
+
+    assert sanitized[0]["content"] == "Instruction A\nInstruction B"
+    assert sanitized[1]["content"] == "Instruction C"

@@ -9,10 +9,10 @@ from openai import OpenAI
 from settings import DEFAULT_MODEL_NAME
 
 
-def _dedupe_prompt_lines(text: str) -> str:
+def _dedupe_prompt_lines(text: str, seen: Optional[set] = None) -> str:
     """Remove duplicate non-empty lines to avoid repeating instructions in prompts."""
 
-    seen = set()
+    seen = seen if seen is not None else set()
     deduped: List[str] = []
     for line in text.splitlines():
         normalized = line.strip()
@@ -25,13 +25,15 @@ def _dedupe_prompt_lines(text: str) -> str:
 
 
 def _sanitize_messages(messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
-    """Return a copy of messages with duplicate lines removed from each content block."""
+    """Return a copy of messages with duplicate lines removed across all content blocks."""
 
     sanitized: List[Dict[str, str]] = []
+    seen: set = set()
+
     for message in messages:
         content = message.get("content")
         if isinstance(content, str):
-            content = _dedupe_prompt_lines(content)
+            content = _dedupe_prompt_lines(content, seen)
         sanitized.append({**message, "content": content})
     return sanitized
 
