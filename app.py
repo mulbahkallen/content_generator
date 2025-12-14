@@ -56,6 +56,151 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+IMAGING_AND_DIAGNOSTIC_OPTIONS = [
+    "Imaging & Diagnostic Services",
+    "Medical Imaging Center",
+    "Diagnostic Radiology",
+    "MRI Center",
+    "CT Scan Center",
+    "PET Scan Center",
+    "X-Ray Services",
+    "Ultrasound Center",
+    "Breast Imaging / Mammography",
+    "DEXA Bone Density Testing",
+    "Mobile Imaging Services",
+    "Interventional Radiology (IR)",
+    "Cardiac Imaging",
+    "Nuclear Medicine",
+]
+
+INDUSTRY_OPTIONS: List[str] = [
+    "General Medicine",
+    "Internal Medicine",
+    "Family Medicine",
+    "Concierge Medicine",
+    "Urgent Care",
+    "Telemedicine",
+    "Primary Care",
+    "Plastic Surgery",
+    "Cosmetic Surgery",
+    "Aesthetic Medicine",
+    "Medical Spa (MedSpa)",
+    "Botox & Fillers",
+    "Facial Rejuvenation",
+    "Anti-Aging Medicine",
+    "Cosmetic Dermatology",
+    "Laser & Skin Treatments",
+    "Body Contouring",
+    "General Dentistry",
+    "Cosmetic Dentistry",
+    "Pediatric Dentistry",
+    "Orthodontics",
+    "Periodontics",
+    "Endodontics",
+    "Prosthodontics",
+    "Oral Surgery",
+    "Dental Implants",
+    "TMJ & Bite Correction",
+    "General Surgery",
+    "Bariatric Surgery",
+    "Colorectal Surgery",
+    "Orthopedic Surgery",
+    "Spine Surgery",
+    "Vascular Surgery",
+    "Cardiothoracic Surgery",
+    "ENT Surgery",
+    "Reconstructive Surgery",
+    "Obstetrics & Gynecology (OB-GYN)",
+    "Fertility / Reproductive Medicine",
+    "Women’s Health Clinics",
+    "Men’s Health Clinics",
+    "Hormone Replacement Therapy (HRT)",
+    "Testosterone Therapy",
+    "Pelvic Floor Therapy",
+    "Sexual Wellness",
+    "Regenerative Medicine",
+    "Functional Medicine",
+    "Integrative Medicine",
+    "Holistic Medicine",
+    "Stem Cell Therapy",
+    "PRP (Platelet-Rich Plasma)",
+    "IV Therapy",
+    "NAD+ Therapy",
+    "Biohacking Clinics",
+    "Peptide Therapy",
+    "Pain Management",
+    "Interventional Pain",
+    "Neurology",
+    "Neurosurgery",
+    "Spine Center",
+    "Migraine Clinic",
+    "Headache Specialist",
+    "Movement Disorders",
+    "Gastroenterology (GI)",
+    "Colorectal Health",
+    "Digestive Health Clinics",
+    "Weight Loss Clinics",
+    "Medical Weight Management",
+    "Bariatric Medicine",
+    "Psychiatry",
+    "Psychology",
+    "Therapy & Counseling",
+    "ADHD Clinics",
+    "Depression & Anxiety Centers",
+    "Ketamine Clinics",
+    "TMS Therapy",
+    "Cardiology",
+    "Vascular Medicine",
+    "Vein Clinics",
+    "Varicose Vein Treatment",
+    "General Dermatology",
+    "Cosmetic Dermatology",
+    "MOHS Surgery",
+    "Skin Cancer Clinics",
+    "Acne & Rosacea Clinics",
+    "Hair Restoration",
+    "Ophthalmology",
+    "Optometry",
+    "LASIK & Refractive Surgery",
+    "Otolaryngology (ENT)",
+    "Audiology",
+    "Hearing Aid Centers",
+    "Sinus & Allergy Clinics",
+    "Pediatrics",
+    "Pediatric Dentistry",
+    "Pediatric Neurology",
+    "Pediatric ENT",
+    "Adolescent Behavioral Health",
+    "Urology",
+    "Erectile Dysfunction Clinics",
+    "Nephrology",
+    "Endocrinology",
+    "Diabetes Management",
+    "Pulmonology",
+    "Sleep Medicine",
+    "CPAP Alternatives",
+    "Sleep Apnea Clinics",
+    "Physical Therapy",
+    "Occupational Therapy",
+    "Sports Medicine",
+    "Chiropractic",
+    "Physical Rehabilitation",
+    "Athletic Performance Centers",
+    "Post-Surgical Rehab",
+    "Allergy & Immunology",
+    "Rheumatology",
+    "Infectious Disease",
+    "Travel Medicine",
+    "Genetic Counseling",
+    "Wound Care Centers",
+    "Concierge Pediatrics",
+    "Concierge OB-GYN",
+    "Suboxone / MAT Clinics",
+    "Aesthetics + Wellness Hybrids",
+    *IMAGING_AND_DIAGNOSTIC_OPTIONS,
+]
+CUSTOM_INDUSTRY_OPTION = "Other / Custom"
+
 
 INDUSTRY_OPTIONS: List[str] = [
     "General Medicine",
@@ -228,6 +373,8 @@ def init_session_state():
         st.session_state["brand_book_text"] = ""
     if "onboarding_text" not in st.session_state:
         st.session_state["onboarding_text"] = ""
+    if "home_page_text" not in st.session_state:
+        st.session_state["home_page_text"] = ""
 
 
 def main():
@@ -453,18 +600,61 @@ def main():
                         st.error(f"Failed to embed golden rules: {exc}")
 
             st.caption("Upload brand and onboarding references (plain text, DOCX, or PDF)")
-            brand_book_upload = st.file_uploader(
-                "Brand book copy", type=["txt", "docx", "pdf"], key="brand_book_uploader"
+            brand_col, onboard_col = st.columns(2)
+            with brand_col:
+                brand_book_upload = st.file_uploader(
+                    "Brand book copy", type=["txt", "docx", "pdf"], key="brand_book_uploader"
+                )
+                brand_book_text = st.text_area(
+                    "Brand book text (optional)",
+                    value=st.session_state.get("brand_book_text", ""),
+                    height=140,
+                    key="brand_book_text",
+                )
+            with onboard_col:
+                onboarding_upload = st.file_uploader(
+                    "Client onboarding form", type=["txt", "docx", "pdf"], key="onboarding_uploader"
+                )
+                onboarding_text = st.text_area(
+                    "Onboarding notes (optional)",
+                    value=st.session_state.get("onboarding_text", ""),
+                    height=140,
+                    key="onboarding_text",
+                )
+
+            home_page_upload = st.file_uploader(
+                "Reference home page copy", type=["txt", "docx", "pdf"], key="home_page_uploader"
             )
-            onboarding_upload = st.file_uploader(
-                "Client onboarding form", type=["txt", "docx", "pdf"], key="onboarding_uploader"
+            home_page_text = st.text_area(
+                "Home page reference (optional)",
+                value=st.session_state.get("home_page_text", ""),
+                height=140,
+                key="home_page_text",
             )
-            brand_book_text = load_text_from_upload(brand_book_upload)
-            onboarding_text = load_text_from_upload(onboarding_upload)
-            if brand_book_text:
+
+            if brand_book_upload:
+                uploaded_brand = load_text_from_upload(brand_book_upload)
+                if uploaded_brand:
+                    brand_book_text = (brand_book_text + "\n" + uploaded_brand).strip()
+                    st.session_state["brand_book_text"] = brand_book_text
+            else:
                 st.session_state["brand_book_text"] = brand_book_text
-            if onboarding_text:
+
+            if onboarding_upload:
+                uploaded_onboarding = load_text_from_upload(onboarding_upload)
+                if uploaded_onboarding:
+                    onboarding_text = (onboarding_text + "\n" + uploaded_onboarding).strip()
+                    st.session_state["onboarding_text"] = onboarding_text
+            else:
                 st.session_state["onboarding_text"] = onboarding_text
+
+            if home_page_upload:
+                uploaded_home_page = load_text_from_upload(home_page_upload)
+                if uploaded_home_page:
+                    home_page_text = (home_page_text + "\n" + uploaded_home_page).strip()
+                    st.session_state["home_page_text"] = home_page_text
+            else:
+                st.session_state["home_page_text"] = home_page_text
 
             st.header("6. Keyword Inputs")
             paramount_kw_raw = st.text_area(
@@ -521,6 +711,7 @@ def main():
                 embedded_rules = st.session_state.get("golden_rule_chunks", [])
                 brand_book_text = st.session_state.get("brand_book_text", "")
                 onboarding_text = st.session_state.get("onboarding_text", "")
+                home_page_text = st.session_state.get("home_page_text", "")
 
                 if not embedded_rules:
                     st.warning(
@@ -582,6 +773,7 @@ def main():
                                     primary_keywords=primary_keywords,
                                     brand_book=brand_book_text,
                                     onboarding_notes=onboarding_text,
+                                    home_page_copy=home_page_text,
                                     golden_rule_chunks=embedded_rules,
                                     top_rules=12,
                                 )
@@ -747,6 +939,18 @@ def main():
                 key="lab_onboarding_text",
             )
 
+        lab_home_page_upload = st.file_uploader(
+            "Reference home page (TXT, DOCX, or PDF)",
+            type=["txt", "docx", "pdf"],
+            key="lab_home_page_upload",
+        )
+        lab_home_page_text = st.text_area(
+            "Home page reference (optional)",
+            value=st.session_state.get("home_page_text", ""),
+            height=140,
+            key="lab_home_page_text",
+        )
+
         if lab_brand_book_upload:
             uploaded_brand = load_text_from_upload(lab_brand_book_upload)
             if uploaded_brand:
@@ -757,6 +961,11 @@ def main():
             if uploaded_onboarding:
                 lab_onboarding_text = (lab_onboarding_text + "\n" + uploaded_onboarding).strip()
                 st.session_state["onboarding_text"] = lab_onboarding_text
+        if lab_home_page_upload:
+            uploaded_home_page = load_text_from_upload(lab_home_page_upload)
+            if uploaded_home_page:
+                lab_home_page_text = (lab_home_page_text + "\n" + uploaded_home_page).strip()
+                st.session_state["home_page_text"] = lab_home_page_text
 
         with st.form("qa_lab_form"):
             use_builder_defaults = st.checkbox(
@@ -896,6 +1105,7 @@ def main():
             embedded_rules = st.session_state.get("golden_rule_chunks", [])
             brand_book_text = st.session_state.get("brand_book_text", "")
             onboarding_text = st.session_state.get("onboarding_text", "")
+            home_page_text = st.session_state.get("home_page_text", "")
 
             lab_brand_info = BrandInfo(
                 name=lab_brand.strip(),
@@ -933,6 +1143,7 @@ def main():
                     primary_keywords=lab_primary_list,
                     brand_book=brand_book_text,
                     onboarding_notes=onboarding_text,
+                    home_page_copy=home_page_text,
                     golden_rule_chunks=embedded_rules,
                 )
                 st.session_state["lab_result"] = {
