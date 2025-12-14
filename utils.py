@@ -31,6 +31,7 @@ class PageDefinition:
     slug: str
     page_name: str
     page_type: str  # "home", "service", "sub service", "about", "location"
+    service_name: Optional[str] = None
 
 
 @dataclass

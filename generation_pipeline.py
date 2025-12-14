@@ -59,6 +59,7 @@ Page info:
 - Slug: {page.slug}
 - Page name: {page.page_name}
 - Page type: {page.page_type}
+- Service focus: {page.service_name or 'None provided'}
 
 SEO targets:
 - Primary keyword: {primary_kw or "NONE"}
@@ -128,6 +129,7 @@ Page info:
 - Slug: {page.slug}
 - Page name: {page.page_name}
 - Page type: {page.page_type}
+- Service focus: {page.service_name or 'None provided'}
 
 SEO targets:
 - Primary keyword: {primary_kw or "NONE"}
@@ -199,6 +201,7 @@ Page info:
 - Slug: {page.slug}
 - Page name: {page.page_name}
 - Page type: {page.page_type}
+- Service focus: {page.service_name or 'None provided'}
 
 SEO requirements:
 - Primary keyword: {primary_kw or "NONE"}
@@ -256,7 +259,10 @@ def generate_medical_page(
 
     primary_kw = seo_entry.primary_keyword if seo_entry else None
     supporting_kws = seo_entry.supporting_keywords if seo_entry else []
-    target_keywords = list({kw: None for kw in primary_keywords + supporting_kws}.keys())
+    service_focus = getattr(page, "service_name", None)
+    target_keywords = list(
+        {kw: None for kw in primary_keywords + supporting_kws + ([service_focus] if service_focus else [])}.keys()
+    )
     home_page_profile = analyze_homepage_copy(home_page_copy or brand_book)
     tone_hint = home_page_profile.get("tone_indicators", brand_info.voice_tone)
     topic_query = build_query_text(
@@ -265,6 +271,7 @@ def generate_medical_page(
         brand_info.location,
         audience_intent,
         tone_hint,
+        service_focus or "",
     )
     use_full_rules = golden_rule_mode == "full_text" and golden_rule_text.strip()
     dynamic_rules: List[RuleChunk] = []
@@ -298,6 +305,7 @@ def generate_medical_page(
             "page_type": page.page_type,
             "page_name": page.page_name,
             "topic": topic or page.page_name,
+            "service": service_focus or "None provided",
             "intent": audience_intent,
             "goal": page_goal,
         },
