@@ -6,3 +6,4 @@ python-docx
 numpy
 PyPDF2
 pytest
+faiss-cpu
