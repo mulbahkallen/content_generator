@@ -7,6 +7,13 @@ from typing import Dict, List, Optional, Sequence, Tuple
 
 from rule_storage import RuleChunk
 
+PAGE_LENGTH_HINTS = {
+    "home": "Home pages should read like a full landing page: aim for 1,300–1,700 words across 8–12 sections with full paragraphs, not stubs.",
+    "service": "Service pages should land around 1,000–1,300 words with descriptive sections, proof points, FAQs, and a closing CTA.",
+    "about": "About pages should run 900–1,200 words with a rich story, team details, values, and credibility.",
+    "location": "Location pages should be 1,000–1,300 words covering local details, services, trust signals, and FAQs.",
+}
+
 
 def _format_rule_block(static_rules: Dict[str, Sequence[str]]) -> str:
     if not static_rules:
@@ -86,6 +93,10 @@ def build_hybrid_prompt(
 
     static_block = _format_rule_block(static_rules)
     dynamic_block = _format_dynamic_rules(dynamic_rules)
+    length_hint = PAGE_LENGTH_HINTS.get(
+        page_info.get("page_type", ""),
+        "Aim for 1,000–1,300 words with complete sections that would fit a production-ready web page.",
+    )
     keyword_block = "\n".join(
         [
             f"Paramount keywords: {', '.join(keywords.get('paramount', [])) or 'None'}",
@@ -143,6 +154,7 @@ OUTPUT INSTRUCTIONS:
 - Ensure the target audience stays consistent (do not shift between clinician and patient voices).
 - Use paramount and primary keywords naturally; avoid stuffing.
 - Respect SEO/AEO guidance, CTA style, and structure cues from the retrieved rules.
+- Length guardrail: {length_hint}
 - Write concise, empathetic, medically accurate copy.
 - Return ONLY the JSON following the provided schema.
 """
