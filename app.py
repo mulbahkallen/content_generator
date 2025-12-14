@@ -101,8 +101,8 @@ Supporting documents (brand book, onboarding forms, homepage copy):
 {supporting_text[:3500]}
 
 Tasks:
-1) Suggest 5-10 paramount/umbrella keywords that capture the brand and journey (e.g., "cosmetic dentistry clinic Los Angeles").
-2) Suggest 1-3 primary keywords per service that match how users search when ready to choose a provider.
+1) Suggest 5-10 paramount/umbrella keywords that describe the overall business or practice using the pattern "best <core service/practice> in <location>" (e.g., "best dentist in Houston" or "best imaging center in Chino Hills").
+2) Suggest 1-3 primary keywords per service that follow "best <specific service> in <location>" based on the services offered (e.g., "best traumatic brain injury MRI in Chino Hills").
 3) Keep phrasing buyer-journey aware (discovery vs booking) and location-aware.
 
 Return JSON with two arrays:
@@ -1412,6 +1412,15 @@ def main():
             )
             st.success("Applied document keyword recommendations to the QA lab inputs.")
 
+        lab_location = st.text_input(
+            "Primary location for keyword helpers",
+            value=st.session_state.get(
+                "lab_location", st.session_state.get("location", "Remote")
+            ),
+            key="lab_location",
+            help="Set this before generating service keywords so phrasing aligns with your city.",
+        )
+
         st.subheader("Service keyword helper (lab)")
         lab_services_raw = st.text_area(
             "List of services (one per line or comma separated)",
@@ -1488,7 +1497,6 @@ def main():
                 "voice_tone", "Confident, concise, and helpful."
             )
             default_uvp = st.session_state.get("uvp", "")
-            default_location = st.session_state.get("location", "Remote")
             default_target = st.session_state.get(
                 "target_audience", "B2B buyers evaluating service partners."
             )
@@ -1577,10 +1585,11 @@ def main():
                 else:
                     st.session_state.pop("lab_selected_service", None)
                     lab_selected_service = None
-                lab_location = st.text_input(
-                    "Primary location",
-                    value=default_location if use_builder_defaults else "Remote",
-                    key="lab_location",
+                st.caption(
+                    "Primary location is set above for keyword helpers and this lab run."
+                )
+                lab_location = st.session_state.get(
+                    "lab_location", st.session_state.get("location", "Remote")
                 )
 
             lab_target = st.text_area(
