@@ -6,7 +6,7 @@ import pandas as pd
 import streamlit as st
 
 from settings import DEFAULT_MODEL_NAME, MODEL_OPTIONS, STYLE_PROFILE_OPTIONS
-from openai_client import get_openai_client
+from openai_client import call_openai_json, get_openai_client
 from utils import (
     BrandInfo,
     PageDefinition,
@@ -17,6 +17,7 @@ from utils import (
     parse_seo_csv,
     parse_sitemap_csv,
     render_page_preview,
+    safe_json_loads,
 )
 from generation_pipeline import generate_medical_page
 from prompt_builder import analyze_homepage_copy
@@ -31,6 +32,105 @@ st.set_page_config(
 
 CORE_RULE_PATH = "docs/core_rules.json"
 RULE_STORE_PATH = ".cache/golden_rules/index"
+
+
+def generate_service_keywords(
+    client,
+    services: List[str],
+    location: str,
+    audience_intent: str,
+    model_name: str,
+) -> List[str]:
+    """Create location-aware primary keyword ideas from a list of services."""
+
+    prompt = f"""
+You are an SEO strategist.
+Create location-ready primary keywords that match how people search for providers.
+
+Services to target: {', '.join(services)}
+Location: {location or 'Not provided'}
+Search intent: {audience_intent}
+
+Rules:
+- Favor phrasing that mirrors the pattern "best <service> <location>" while keeping grammar natural (e.g., "best Invisalign dentist Los Angeles").
+- Keep each keyword concise (max ~6 words) and avoid duplicates.
+- Return 1-2 variants per service if needed for natural phrasing.
+
+Return a JSON object: {{"keywords": ["keyword one", "keyword two"]}}
+"""
+
+    messages = [
+        {
+            "role": "system",
+            "content": "Provide concise, search-friendly keywords only. Return valid JSON.",
+        },
+        {"role": "user", "content": prompt},
+    ]
+
+    raw = call_openai_json(client, messages, model_name=model_name)
+    parsed = safe_json_loads(raw)
+    keywords = parsed.get("keywords", []) if isinstance(parsed, dict) else []
+    return [kw for kw in keywords if isinstance(kw, str) and kw.strip()]
+
+
+def generate_document_keywords(
+    client,
+    *,
+    brand_name: str,
+    industry: str,
+    location: str,
+    audience_intent: str,
+    page_goal: str,
+    services: List[str],
+    supporting_text: str,
+    model_name: str,
+) -> Dict[str, List[str]]:
+    """Derive keyword ideas from uploaded references and the buyer journey."""
+
+    prompt = f"""
+You are an SEO keyword strategist helping plan a website build for a healthcare practice.
+
+Brand: {brand_name}
+Industry/Niche: {industry}
+Primary location: {location or 'Not provided'}
+Search intent / buyer journey: {audience_intent}
+Primary CTA/goal: {page_goal}
+Service offerings: {', '.join(services) or 'Not provided'}
+
+Supporting documents (brand book, onboarding forms, homepage copy):
+{supporting_text[:3500]}
+
+Tasks:
+1) Suggest 5-10 paramount/umbrella keywords that capture the brand and journey (e.g., "cosmetic dentistry clinic Los Angeles").
+2) Suggest 1-3 primary keywords per service that match how users search when ready to choose a provider.
+3) Keep phrasing buyer-journey aware (discovery vs booking) and location-aware.
+
+Return JSON with two arrays:
+{{
+  "paramount_keywords": ["..."],
+  "primary_keywords": ["..."]
+}}
+Only return JSON.
+"""
+
+    messages = [
+        {
+            "role": "system",
+            "content": "Return clean JSON keyword recommendations without commentary.",
+        },
+        {"role": "user", "content": prompt},
+    ]
+
+    raw = call_openai_json(client, messages, model_name=model_name)
+    parsed = safe_json_loads(raw)
+    if not isinstance(parsed, dict):
+        return {"paramount_keywords": [], "primary_keywords": []}
+
+    paramount = parsed.get("paramount_keywords", []) or []
+    primary = parsed.get("primary_keywords", []) or []
+    paramount = [kw for kw in paramount if isinstance(kw, str) and kw.strip()]
+    primary = [kw for kw in primary if isinstance(kw, str) and kw.strip()]
+    return {"paramount_keywords": paramount, "primary_keywords": primary}
 
 # Subtle UI theming for a friendlier workspace
 st.markdown(
@@ -628,6 +728,69 @@ def main():
             else:
                 st.session_state["home_page_text"] = home_page_text
 
+            supporting_doc_text = "\n\n".join(
+                [t for t in [brand_book_text, onboarding_text, home_page_text] if t.strip()]
+            ).strip()
+            service_offerings = [
+                str(row.get("page_name", "")).strip()
+                for _, row in pages_df.iterrows()
+                if str(row.get("page_type", "")).strip() in {"service", "sub service"}
+            ]
+
+            keyword_doc_col1, keyword_doc_col2 = st.columns([1, 1])
+            with keyword_doc_col1:
+                doc_kw_help = st.button(
+                    "Generate keywords from uploaded documents", use_container_width=True
+                )
+            with keyword_doc_col2:
+                apply_doc_primary = st.button(
+                    "Use document keywords as primary list", use_container_width=True
+                )
+
+            if doc_kw_help:
+                if not supporting_doc_text:
+                    st.warning("Upload or paste supporting documents to extract keywords first.")
+                else:
+                    with st.spinner("Mining documents for paramount and service keywords..."):
+                        try:
+                            doc_keywords = generate_document_keywords(
+                                client,
+                                brand_name=brand_name,
+                                industry=industry,
+                                location=location,
+                                audience_intent=audience_intent,
+                                page_goal=page_goal,
+                                services=service_offerings,
+                                supporting_text=supporting_doc_text,
+                                model_name=st.session_state.get("model_name", DEFAULT_MODEL_NAME),
+                            )
+                            st.session_state["doc_keyword_suggestions"] = doc_keywords
+                            st.success("Keyword ideas generated from supporting docs.")
+                        except Exception as exc:
+                            st.error(f"Failed to generate document keywords: {exc}")
+
+            doc_suggestions = st.session_state.get("doc_keyword_suggestions", {})
+            if doc_suggestions:
+                with st.expander("Document-derived keyword ideas", expanded=False):
+                    paramount = doc_suggestions.get("paramount_keywords", [])
+                    primary = doc_suggestions.get("primary_keywords", [])
+                    if paramount:
+                        st.markdown("**Paramount ideas:** " + ", ".join(paramount))
+                    if primary:
+                        st.markdown("**Primary ideas:** " + ", ".join(primary))
+                    if not paramount and not primary:
+                        st.caption("No keyword suggestions available yet.")
+
+            if apply_doc_primary and st.session_state.get("doc_keyword_suggestions"):
+                primary_list = st.session_state["doc_keyword_suggestions"].get(
+                    "primary_keywords", []
+                )
+                st.session_state["primary_kw_raw"] = "\n".join(primary_list)
+                st.session_state["paramount_kw_raw"] = "\n".join(
+                    st.session_state["doc_keyword_suggestions"].get("paramount_keywords", [])
+                )
+                st.success("Applied document keyword recommendations to the inputs.")
+
             with st.expander("Homepage tone snapshot", expanded=False):
                 profile = analyze_homepage_copy(home_page_text)
                 if profile:
@@ -643,20 +806,86 @@ def main():
             )
             paramount_kw_raw = st.text_area(
                 "Paramount keyword list (comma or newline separated)",
-                value="",
+                value=st.session_state.get("paramount_kw_raw", ""),
+                key="paramount_kw_raw",
             )
             if paramount_kw_file:
-                paramount_kw_raw = (paramount_kw_raw + "\n" + load_text_from_upload(paramount_kw_file)).strip()
+                st.session_state["paramount_kw_raw"] = (
+                    st.session_state.get("paramount_kw_raw", "")
+                    + "\n"
+                    + load_text_from_upload(paramount_kw_file)
+                ).strip()
+            paramount_kw_raw = st.session_state.get("paramount_kw_raw", "")
 
             primary_kw_file = st.file_uploader(
                 "Upload primary keyword list (TXT/CSV)", type=["txt", "csv"], key="primary_kw_file"
             )
             primary_kw_raw = st.text_area(
                 "Primary keyword list (comma or newline separated)",
-                value="",
+                value=st.session_state.get("primary_kw_raw", ""),
+                key="primary_kw_raw",
             )
             if primary_kw_file:
-                primary_kw_raw = (primary_kw_raw + "\n" + load_text_from_upload(primary_kw_file)).strip()
+                st.session_state["primary_kw_raw"] = (
+                    st.session_state.get("primary_kw_raw", "")
+                    + "\n"
+                    + load_text_from_upload(primary_kw_file)
+                ).strip()
+            primary_kw_raw = st.session_state.get("primary_kw_raw", "")
+
+            st.subheader("Service-based keyword helper")
+            services_raw = st.text_area(
+                "List of services (one per line or comma separated)",
+                value=st.session_state.get("services_raw", ""),
+                key="services_raw",
+                help="Provide services to generate location-ready primary keyword ideas.",
+            )
+            keyword_action_cols = st.columns([1, 1])
+            with keyword_action_cols[0]:
+                generate_kw_button = st.button(
+                    "Generate location-based keywords", use_container_width=True
+                )
+            with keyword_action_cols[1]:
+                apply_primary_button = st.button(
+                    "Make generated list the primary keywords", use_container_width=True
+                )
+
+            if generate_kw_button:
+                service_list = parse_keywords(services_raw)
+                if not service_list:
+                    st.warning("Provide at least one service to generate keywords.")
+                elif not location:
+                    st.warning("Add a primary location to shape the keyword phrasing.")
+                else:
+                    with st.spinner("Creating location-aware primary keywords..."):
+                        try:
+                            generated_keywords = generate_service_keywords(
+                                client,
+                                services=service_list,
+                                location=location,
+                                audience_intent=audience_intent,
+                                model_name=st.session_state.get(
+                                    "model_name", DEFAULT_MODEL_NAME
+                                ),
+                            )
+                            st.session_state["generated_service_keywords"] = generated_keywords
+                            st.success("Created keyword ideas using your service list and location.")
+                        except Exception as exc:
+                            st.error(f"Failed to generate service keywords: {exc}")
+
+            generated_service_keywords = st.session_state.get(
+                "generated_service_keywords", []
+            )
+            if generated_service_keywords:
+                st.caption(
+                    "Generated keywords follow the 'best + service + location' search pattern."
+                )
+                st.write("\n".join(f"• {kw}" for kw in generated_service_keywords))
+
+            if apply_primary_button and generated_service_keywords:
+                st.session_state["primary_kw_raw"] = "\n".join(generated_service_keywords)
+                primary_kw_raw = st.session_state["primary_kw_raw"]
+                st.success("Primary keyword list updated from generated suggestions.")
 
             st.header("7. Controls")
             page_topic = st.text_input(
