@@ -18,24 +18,52 @@ PAGE_LENGTH_HINTS = {
 def _format_rule_block(static_rules: Dict[str, Sequence[str]]) -> str:
     if not static_rules:
         return "No static rules available."
+
     sections = []
     for section, rules in static_rules.items():
         if not rules:
             continue
-        joined = "\n".join(f"- {rule}" for rule in rules)
+
+        seen = set()
+        deduped_rules = []
+        for rule in rules:
+            normalized = rule.strip()
+            if not normalized or normalized.lower() in seen:
+                continue
+            seen.add(normalized.lower())
+            deduped_rules.append(normalized)
+
+        if not deduped_rules:
+            continue
+
+        joined = "\n".join(f"- {rule}" for rule in deduped_rules)
         sections.append(f"{section.title()}\n{joined}")
+
     return "\n\n".join(sections)
 
 
 def _format_dynamic_rules(chunks: Sequence[RuleChunk]) -> str:
     if not chunks:
         return "No dynamic golden rule snippets retrieved; rely on static core rules."
+
+    seen_texts = set()
+    unique_chunks: List[RuleChunk] = []
+    for chunk in chunks:
+        normalized = chunk.text.strip()
+        if not normalized or normalized.lower() in seen_texts:
+            continue
+        seen_texts.add(normalized.lower())
+        unique_chunks.append(chunk)
+
+    if not unique_chunks:
+        return "No dynamic golden rule snippets retrieved; rely on static core rules."
+
     lines = []
-    for idx, chunk in enumerate(chunks, start=1):
+    for idx, chunk in enumerate(unique_chunks, start=1):
         tags = ", ".join(chunk.metadata.get("tags", []))
         score = chunk.metadata.get("score")
         score_txt = f" (sim={score:.3f})" if isinstance(score, float) else ""
-        lines.append(f"[{idx}] (tags: {tags}){score_txt}\n{chunk.text}")
+        lines.append(f"[{idx}] (tags: {tags}){score_txt}\n{chunk.text.strip()}")
     return "\n\n".join(lines)
 
 
