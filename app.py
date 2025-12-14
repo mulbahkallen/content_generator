@@ -234,7 +234,6 @@ def init_session_state():
     if "home_page_text" not in st.session_state:
         st.session_state["home_page_text"] = ""
 
-
 def main():
     init_session_state()
 
