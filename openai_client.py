@@ -9,6 +9,35 @@ from openai import OpenAI
 from settings import DEFAULT_MODEL_NAME
 
 
+def _dedupe_prompt_lines(text: str, seen: Optional[set] = None) -> str:
+    """Remove duplicate non-empty lines to avoid repeating instructions in prompts."""
+
+    seen = seen if seen is not None else set()
+    deduped: List[str] = []
+    for line in text.splitlines():
+        normalized = line.strip()
+        if normalized:
+            if normalized in seen:
+                continue
+            seen.add(normalized)
+        deduped.append(line)
+    return "\n".join(deduped).strip()
+
+
+def _sanitize_messages(messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    """Return a copy of messages with duplicate lines removed across all content blocks."""
+
+    sanitized: List[Dict[str, str]] = []
+    seen: set = set()
+
+    for message in messages:
+        content = message.get("content")
+        if isinstance(content, str):
+            content = _dedupe_prompt_lines(content, seen)
+        sanitized.append({**message, "content": content})
+    return sanitized
+
+
 def get_api_key() -> Optional[str]:
     """
     Retrieve the OpenAI API key from environment or Streamlit secrets.
@@ -53,7 +82,7 @@ def call_openai_json(
     try:
         response = client.responses.create(
             model=model_name,
-            input=messages,
+            input=_sanitize_messages(messages),
         )
     except Exception as exc:
         raise RuntimeError(f"OpenAI request failed: {exc}") from exc
