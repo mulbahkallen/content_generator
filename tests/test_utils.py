@@ -1,4 +1,11 @@
+import sys
+from pathlib import Path
+
 import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.append(str(ROOT))
 
 from utils import SchemaValidationError, safe_json_loads, validate_against_schema
 
