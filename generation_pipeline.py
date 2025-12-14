@@ -7,7 +7,12 @@ from openai import OpenAI
 from config import GLOBAL_SYSTEM_PROMPT, MEDICAL_PAGE_SCHEMA, OUTLINE_SCHEMA
 from settings import DEFAULT_MODEL_NAME
 from examples import get_example_for
-from golden_rules import RuleChunk, retrieve_relevant_rules
+from prompt_builder import (
+    analyze_homepage_copy,
+    build_hybrid_prompt,
+    build_query_text,
+)
+from rule_storage import RuleChunk, RuleStore
 from utils import (
     BrandInfo,
     PageDefinition,
@@ -238,7 +243,10 @@ def generate_medical_page(
     brand_book: str,
     onboarding_notes: str,
     home_page_copy: str,
-    golden_rule_chunks: List[RuleChunk],
+    static_rules: Dict[str, Any],
+    rule_store: Optional[RuleStore],
+    audience_intent: str,
+    page_goal: str,
     golden_rule_text: str = "",
     golden_rule_mode: str = "retrieval",
     top_rules: int = 12,
@@ -249,17 +257,61 @@ def generate_medical_page(
     primary_kw = seo_entry.primary_keyword if seo_entry else None
     supporting_kws = seo_entry.supporting_keywords if seo_entry else []
     target_keywords = list({kw: None for kw in primary_keywords + supporting_kws}.keys())
-    topic_query = f"{page.page_type} page about {topic or page.page_name} for {brand_info.industry} in {brand_info.location}"
+    home_page_profile = analyze_homepage_copy(home_page_copy or brand_book)
+    tone_hint = home_page_profile.get("tone_indicators", brand_info.voice_tone)
+    topic_query = build_query_text(
+        brand_info.industry,
+        page.page_type,
+        brand_info.location,
+        audience_intent,
+        tone_hint,
+    )
     use_full_rules = golden_rule_mode == "full_text" and golden_rule_text.strip()
-    selected_rules: List[RuleChunk] = []
+    dynamic_rules: List[RuleChunk] = []
+
+    page_tags = {
+        "home": ["structure", "tone", "cta"],
+        "service": ["seo", "structure", "cta"],
+        "sub service": ["seo", "structure"],
+        "about": ["tone", "structure"],
+        "location": ["seo", "structure", "cta"],
+    }.get(page.page_type, ["general"])
 
     if use_full_rules:
-        rule_text = golden_rule_text.strip()
-    else:
-        selected_rules = retrieve_relevant_rules(
-            client, topic_query, golden_rule_chunks, top_n=top_rules
-        )
-        rule_text = "\n\n".join(f"- {rc.text}" for rc in selected_rules)
+        dynamic_rules = [RuleChunk(text=golden_rule_text.strip(), embedding=[], metadata={"tags": ["full_text"]})]
+    elif rule_store is not None and rule_store.is_ready:
+        dynamic_rules = rule_store.query(client, topic_query, top_k=top_rules, required_tags=page_tags)
+
+    prompt, diagnostics = build_hybrid_prompt(
+        static_rules,
+        dynamic_rules,
+        brand_info={
+            "name": brand_info.name,
+            "industry": brand_info.industry,
+            "location": brand_info.location,
+            "voice_tone": brand_info.voice_tone,
+            "target_audience": brand_info.target_audience,
+            "uvp": brand_info.uvp,
+            "notes": brand_info.notes,
+        },
+        page_info={
+            "page_type": page.page_type,
+            "page_name": page.page_name,
+            "topic": topic or page.page_name,
+            "intent": audience_intent,
+            "goal": page_goal,
+        },
+        keywords={
+            "paramount": paramount_keywords,
+            "primary": primary_keywords,
+            "page_primary": [primary_kw] if primary_kw else [],
+            "page_supporting": supporting_kws,
+        },
+        onboarding_notes=onboarding_notes,
+        brand_book=brand_book,
+        home_page_copy=home_page_copy,
+        home_page_profile=home_page_profile,
+    )
 
     schema_block = json.dumps(MEDICAL_PAGE_SCHEMA, indent=2)
 
@@ -268,40 +320,12 @@ def generate_medical_page(
         {
             "role": "user",
             "content": f"""
-You are generating a full medical website page JSON that MUST follow the schema exactly.
+{prompt}
 
-Brand info:
-- Name: {brand_info.name}
-- Industry: {brand_info.industry}
-- Primary location: {brand_info.location}
-- Voice & tone: {brand_info.voice_tone}
-- Target audience: {brand_info.target_audience}
-- Unique value proposition: {brand_info.uvp}
-
-Project inputs:
-- Page type: {page.page_type}
-- Page name: {page.page_name}
-- Page topic/subject: {topic}
-- Style profile: {style_profile}
-- Paramount keywords: {', '.join(paramount_keywords) if paramount_keywords else 'NONE'}
-- Primary keywords: {', '.join(target_keywords) if target_keywords else 'NONE'}
-- Onboarding insights: {onboarding_notes or 'NONE PROVIDED'}
-- Brand book highlights: {brand_book or 'NONE PROVIDED'}
-- Home page reference tone/content: {home_page_copy or 'NONE PROVIDED'}
-
-Golden rule excerpts to honor (most relevant first):
-{rule_text or 'No golden rules provided.'}
-
-Task:
-- Combine the golden rule guidance, keywords, brand book, and onboarding notes into a cohesive prompt for GPT-4 generation.
-- Ensure keyword usage is natural, benefits-led, and location-aware.
-- Keep paragraphs tight and avoid filler.
-- Return ONLY one JSON object matching the schema below.
-
-Required JSON schema:
+Schema to follow:
 {schema_block}
 
-Also surface a compact diagnostics object capturing: which rule chunks were used, injected keywords, and any structural risks.
+Also include a compact diagnostics object capturing used rule tags, keyword coverage, and any structural risks using the key `diagnostics`.
 """,
         },
     ]

@@ -1,0 +1,27 @@
+{
+  "tone_and_voice": [
+    "Use empathetic, respectful language that prioritizes patient trust and clarity.",
+    "Balance authority with warmth; avoid jargon unless context demands it, then explain simply.",
+    "Never overpromise medical outcomes; stay compliant and evidence-led."
+  ],
+  "brand_positioning": [
+    "Highlight differentiators early (credentials, technology, access, outcomes).",
+    "Keep brand persona consistent with provided brand book or homepage tone cues.",
+    "Anchor benefits to patient or caregiver needs, not just features."
+  ],
+  "ethics_and_safety": [
+    "Avoid diagnostic or curative claims; use supportive language (e.g., 'may help', 'can support').",
+    "Respect regulatory boundaries; no sensationalism or fear-based framing.",
+    "Protect privacy and avoid implying clinical advice; encourage professional consultation."
+  ],
+  "seo_and_aeo": [
+    "Integrate primary and supporting keywords naturally within headings and body copy.",
+    "Write concise answers to common patient questions to support AEO/voice search.",
+    "Use scannable structure with descriptive H2/H3s and CTA clarity."
+  ],
+  "cta_and_structure": [
+    "Include clear, low-friction CTAs aligned to intent (book, call, schedule consult).",
+    "Maintain logical flow: hero -> trust -> services -> proof -> FAQs -> CTA.",
+    "Keep paragraph length short (2-4 sentences) and favor bullet clarity when listing items."
+  ]
+}

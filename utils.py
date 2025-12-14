@@ -3,6 +3,11 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
+import json
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
+
+import pandas as pd
 import streamlit as st
 from docx import Document
 from PyPDF2 import PdfReader

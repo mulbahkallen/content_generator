@@ -18,8 +18,9 @@ from utils import (
     parse_sitemap_csv,
     render_page_preview,
 )
-from golden_rules import embed_rule_chunks, split_into_chunks
 from generation_pipeline import generate_medical_page
+from prompt_builder import analyze_homepage_copy
+from rule_storage import RuleStore, load_core_rules
 
 
 st.set_page_config(
@@ -27,29 +28,60 @@ st.set_page_config(
     layout="wide",
 )
 
+CORE_RULE_PATH = "docs/core_rules.json"
+RULE_STORE_PATH = ".cache/golden_rules/index"
+
 # Subtle UI theming for a friendlier workspace
 st.markdown(
     """
     <style>
         .app-gradient-bg {
-            background: linear-gradient(120deg, #0f172a 0%, #111827 40%, #0a0e1a 100%);
-            padding: 1.25rem 1.5rem;
-            border-radius: 18px;
+            background: radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.24), transparent 35%),
+                        radial-gradient(circle at 85% 10%, rgba(34, 211, 238, 0.18), transparent 30%),
+                        linear-gradient(120deg, #0b1224 0%, #0e1429 45%, #070a15 100%);
+            padding: 1.35rem 1.6rem;
+            border-radius: 20px;
             color: #e5e7eb;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.35);
+            border: 1px solid rgba(255,255,255,0.05);
         }
         .section-card {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.05);
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
             padding: 1rem 1.25rem;
-            border-radius: 16px;
+            border-radius: 18px;
             margin-bottom: 1rem;
-            box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+            box-shadow: 0 16px 40px rgba(0,0,0,0.18);
         }
         .stButton button {
             border-radius: 12px !important;
-            padding: 0.6rem 1rem !important;
-            font-weight: 600 !important;
+            padding: 0.65rem 1.15rem !important;
+            font-weight: 700 !important;
+            letter-spacing: 0.01em;
+            background: linear-gradient(90deg, #6366f1, #22d3ee);
+            color: #0b1224;
+            border: none;
+        }
+        .stTabs [role="tab"] {
+            padding: 0.75rem 1.15rem !important;
+            border-radius: 14px 14px 0 0 !important;
+            font-weight: 600;
+        }
+        .stTextInput > div > div > input, .stTextArea textarea {
+            border-radius: 12px !important;
+            border: 1px solid rgba(255,255,255,0.15) !important;
+            background: rgba(255,255,255,0.02) !important;
+        }
+        .metric-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 10px;
+            border-radius: 999px;
+            background: rgba(99,102,241,0.12);
+            color: #c7d2fe;
+            border: 1px solid rgba(99,102,241,0.3);
+            font-size: 0.9rem;
         }
     </style>
     """,
@@ -223,10 +255,14 @@ def init_session_state():
         st.session_state["uploaded_examples"] = {}
     if "lab_result" not in st.session_state:
         st.session_state["lab_result"] = None
-    if "golden_rule_chunks" not in st.session_state:
-        st.session_state["golden_rule_chunks"] = []
+    if "rule_store" not in st.session_state:
+        st.session_state["rule_store"] = RuleStore()
     if "golden_rule_text" not in st.session_state:
         st.session_state["golden_rule_text"] = ""
+    if "static_rules" not in st.session_state:
+        st.session_state["static_rules"] = load_core_rules(CORE_RULE_PATH)
+    if "rule_store_loaded" not in st.session_state:
+        st.session_state["rule_store_loaded"] = False
     if "golden_rule_mode" not in st.session_state:
         st.session_state["golden_rule_mode"] = "retrieval"
     if "golden_rule_top_n" not in st.session_state:
@@ -242,6 +278,10 @@ def init_session_state():
 
 def main():
     init_session_state()
+
+    if not st.session_state.get("rule_store_loaded"):
+        st.session_state["rule_store"] = RuleStore.load(RULE_STORE_PATH)
+        st.session_state["rule_store_loaded"] = True
 
     st.markdown(
         """
@@ -336,6 +376,17 @@ def main():
                 value="",
                 key="target_audience",
             )
+            audience_intent = st.selectbox(
+                "Audience intent",
+                options=[
+                    "Informational",
+                    "Transactional",
+                    "Book an appointment",
+                    "Compare providers",
+                    "Patient education",
+                ],
+                key="audience_intent",
+            )
             uvp = st.text_area(
                 "Unique Value Proposition / Differentiators",
                 value="",
@@ -345,6 +396,11 @@ def main():
                 "Existing site URL(s) or notes (optional)",
                 value="",
                 key="notes",
+            )
+            page_goal = st.text_input(
+                "Primary page goal / CTA style",
+                value="Encourage visitors to book an appointment",
+                key="page_goal",
             )
 
             st.header("2. Sitemap / Pages")
@@ -449,10 +505,13 @@ def main():
                     st.error(f"Failed to load example JSON: {exc}")
 
             st.header("5. Golden Rules & Assets")
-            st.caption("Embed the golden rule set once to reuse across pages.")
+            st.caption("Hybrid static + retrieval: core rules load automatically; embed the Golden Rule Framework for semantic lookups.")
+
+            with st.expander("View static core rules", expanded=False):
+                st.json(st.session_state.get("static_rules", {}))
 
             golden_rule_mode = st.radio(
-                "Golden rule application",
+                "Dynamic rule application",
                 options=["retrieval", "full_text"],
                 format_func=lambda opt: (
                     "Retrieve top relevant chunks"
@@ -470,7 +529,7 @@ def main():
                     "How many rule chunks to inject",
                     min_value=3,
                     max_value=24,
-                    value=st.session_state.get("golden_rule_top_n", 12),
+                    value=st.session_state.get("golden_rule_top_n", 8),
                     step=1,
                     help="Controls how many embedded rule chunks are pulled into each prompt.",
                 )
@@ -479,39 +538,35 @@ def main():
                 st.info(
                     "Full rule set will be sent as one block. Ensure it fits the selected model's context window."
                 )
+
             golden_rule_file = st.file_uploader(
-                "Golden rule set (TXT, DOCX, or PDF)",
+                "Golden Rule Framework document (TXT, DOCX, or PDF)",
                 type=["txt", "docx", "pdf"],
                 key="golden_rule_upload",
             )
             golden_rule_text = st.text_area(
-                "Paste golden rule set",
-                value=st.session_state.get("golden_rule_text", ""),
-                height=200,
+                "Paste or edit the framework", value=st.session_state.get("golden_rule_text", ""), height=200
             )
-            if st.button("Embed golden rules", use_container_width=True):
-                combined_rule_text = golden_rule_text + "\n" + load_text_from_upload(
-                    golden_rule_file
-                )
+
+            if st.button("Embed & save Golden Rule Framework", use_container_width=True):
+                combined_rule_text = golden_rule_text + "\n" + load_text_from_upload(golden_rule_file)
                 combined_rule_text = combined_rule_text.strip()
                 if not combined_rule_text:
                     st.error("Please provide golden rule content to embed.")
                 else:
                     try:
-                        if golden_rule_mode == "full_text":
-                            embedded = embed_rule_chunks(client, [combined_rule_text])
-                            st.success(
-                                "Stored full golden rule set. It will be injected without chunking."
-                            )
-                        else:
-                            chunks = split_into_chunks(combined_rule_text)
-                            embedded = embed_rule_chunks(client, chunks)
-                            st.success(
-                                f"Embedded {len(embedded)} golden rule chunk(s). Reuse for all generations."
-                            )
-
-                        st.session_state["golden_rule_chunks"] = embedded
+                        store = st.session_state.get("rule_store") or RuleStore()
+                        store.build(client, combined_rule_text)
+                        store.save(RULE_STORE_PATH)
+                        st.session_state["rule_store"] = store
                         st.session_state["golden_rule_text"] = combined_rule_text
+                        st.success(
+                            f"Embedded {len(store.chunks)} rule chunk(s) with tags; saved for reuse across sessions."
+                        )
+                        with st.expander("Chunk preview", expanded=False):
+                            for idx, chunk in enumerate(store.chunks[:6]):
+                                st.markdown(f"**Chunk {idx+1}** — tags: {', '.join(chunk.metadata.get('tags', []))}")
+                                st.caption(chunk.text[:400] + ("..." if len(chunk.text) > 400 else ""))
                     except Exception as exc:
                         st.error(f"Failed to embed golden rules: {exc}")
 
@@ -572,15 +627,35 @@ def main():
             else:
                 st.session_state["home_page_text"] = home_page_text
 
+            with st.expander("Homepage tone snapshot", expanded=False):
+                profile = analyze_homepage_copy(home_page_text)
+                if profile:
+                    cols = st.columns(len(profile))
+                    for idx, (k, v) in enumerate(profile.items()):
+                        cols[idx].markdown(f"<div class='metric-badge'><strong>{k}</strong>: {v}</div>", unsafe_allow_html=True)
+                else:
+                    st.caption("No homepage reference provided yet. Upload copy to mirror tone and CTA pacing.")
+
             st.header("6. Keyword Inputs")
+            paramount_kw_file = st.file_uploader(
+                "Upload paramount keyword list (TXT/CSV)", type=["txt", "csv"], key="paramount_kw_file"
+            )
             paramount_kw_raw = st.text_area(
                 "Paramount keyword list (comma or newline separated)",
                 value="",
+            )
+            if paramount_kw_file:
+                paramount_kw_raw = (paramount_kw_raw + "\n" + load_text_from_upload(paramount_kw_file)).strip()
+
+            primary_kw_file = st.file_uploader(
+                "Upload primary keyword list (TXT/CSV)", type=["txt", "csv"], key="primary_kw_file"
             )
             primary_kw_raw = st.text_area(
                 "Primary keyword list (comma or newline separated)",
                 value="",
             )
+            if primary_kw_file:
+                primary_kw_raw = (primary_kw_raw + "\n" + load_text_from_upload(primary_kw_file)).strip()
 
             st.header("7. Controls")
             page_topic = st.text_input(
@@ -624,12 +699,12 @@ def main():
                 primary_keywords = parse_keywords(primary_kw_raw)
                 st.session_state["paramount_kw_cache"] = paramount_keywords
                 st.session_state["primary_kw_cache"] = primary_keywords
-                embedded_rules = st.session_state.get("golden_rule_chunks", [])
+                rule_store: RuleStore = st.session_state.get("rule_store")
                 brand_book_text = st.session_state.get("brand_book_text", "")
                 onboarding_text = st.session_state.get("onboarding_text", "")
                 home_page_text = st.session_state.get("home_page_text", "")
 
-                if not embedded_rules:
+                if golden_rule_mode == "retrieval" and (rule_store is None or not rule_store.is_ready):
                     st.warning(
                         "No embedded golden rules detected. Add and embed them to guide medical copy."
                     )
@@ -690,7 +765,10 @@ def main():
                                     brand_book=brand_book_text,
                                     onboarding_notes=onboarding_text,
                                     home_page_copy=home_page_text,
-                                    golden_rule_chunks=embedded_rules,
+                                    static_rules=st.session_state.get("static_rules", {}),
+                                    rule_store=rule_store,
+                                    audience_intent=audience_intent,
+                                    page_goal=page_goal,
                                     golden_rule_text=st.session_state.get(
                                         "golden_rule_text", ""
                                     ),
@@ -999,6 +1077,15 @@ def main():
                 else "B2B buyers evaluating service partners.",
                 key="lab_target",
             )
+            lab_intent = st.selectbox(
+                "Audience intent",
+                options=["Informational", "Transactional", "Book an appointment", "Compare providers"],
+                key="lab_intent",
+                index=0,
+            )
+            lab_goal = st.text_input(
+                "CTA focus", value="Schedule a consultation", key="lab_goal"
+            )
             lab_supporting_keywords = st.text_input(
                 "Supporting keywords (comma separated)",
                 value="service partner, trusted consultants",
@@ -1039,7 +1126,7 @@ def main():
         if lab_submit and api_ok:
             lab_paramount_list = parse_keywords(lab_paramount_keywords)
             lab_primary_list = parse_keywords(lab_primary_keywords)
-            embedded_rules = st.session_state.get("golden_rule_chunks", [])
+            rule_store: RuleStore = st.session_state.get("rule_store")
             brand_book_text = st.session_state.get("brand_book_text", "")
             onboarding_text = st.session_state.get("onboarding_text", "")
             home_page_text = st.session_state.get("home_page_text", "")
@@ -1081,7 +1168,10 @@ def main():
                     brand_book=brand_book_text,
                     onboarding_notes=onboarding_text,
                     home_page_copy=home_page_text,
-                    golden_rule_chunks=embedded_rules,
+                    static_rules=st.session_state.get("static_rules", {}),
+                    rule_store=rule_store,
+                    audience_intent=lab_intent,
+                    page_goal=lab_goal,
                     golden_rule_text=st.session_state.get("golden_rule_text", ""),
                     golden_rule_mode=st.session_state.get(
                         "golden_rule_mode", "retrieval"
