@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 import streamlit as st
 from openai import OpenAI
 
-from config import DEFAULT_MODEL_NAME
+from settings import DEFAULT_MODEL_NAME
 
 
 def get_api_key() -> Optional[str]:

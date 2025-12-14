@@ -4,12 +4,8 @@ from typing import Any, Dict, List, Optional
 
 from openai import OpenAI
 
-from config import (
-    DEFAULT_MODEL_NAME,
-    GLOBAL_SYSTEM_PROMPT,
-    MEDICAL_PAGE_SCHEMA,
-    OUTLINE_SCHEMA,
-)
+from config import GLOBAL_SYSTEM_PROMPT, MEDICAL_PAGE_SCHEMA, OUTLINE_SCHEMA
+from settings import DEFAULT_MODEL_NAME
 from examples import get_example_for
 from golden_rules import RuleChunk, retrieve_relevant_rules
 from utils import (
