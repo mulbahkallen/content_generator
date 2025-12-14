@@ -233,13 +233,6 @@ def init_session_state():
         st.session_state["onboarding_text"] = ""
     if "home_page_text" not in st.session_state:
         st.session_state["home_page_text"] = ""
-    if "brand_book_text_input" not in st.session_state:
-        st.session_state["brand_book_text_input"] = ""
-    if "onboarding_text_input" not in st.session_state:
-        st.session_state["onboarding_text_input"] = ""
-    if "home_page_text_input" not in st.session_state:
-        st.session_state["home_page_text_input"] = ""
-
 
 def main():
     init_session_state()
@@ -473,7 +466,7 @@ def main():
                     "Brand book text (optional)",
                     value=st.session_state.get("brand_book_text", ""),
                     height=140,
-                    key="brand_book_text_input",
+                    key="brand_book_text",
                 )
             with onboard_col:
                 onboarding_upload = st.file_uploader(
@@ -483,7 +476,7 @@ def main():
                     "Onboarding notes (optional)",
                     value=st.session_state.get("onboarding_text", ""),
                     height=140,
-                    key="onboarding_text_input",
+                    key="onboarding_text",
                 )
 
             home_page_upload = st.file_uploader(
@@ -493,33 +486,32 @@ def main():
                 "Home page reference (optional)",
                 value=st.session_state.get("home_page_text", ""),
                 height=140,
-                key="home_page_text_input",
+                key="home_page_text",
             )
-
-            brand_book_text = st.session_state.get("brand_book_text_input", "")
-            onboarding_text = st.session_state.get("onboarding_text_input", "")
-            home_page_text = st.session_state.get("home_page_text_input", "")
 
             if brand_book_upload:
                 uploaded_brand = load_text_from_upload(brand_book_upload)
                 if uploaded_brand:
                     brand_book_text = (brand_book_text + "\n" + uploaded_brand).strip()
                     st.session_state["brand_book_text"] = brand_book_text
-                    st.session_state["brand_book_text_input"] = brand_book_text
+            else:
+                st.session_state["brand_book_text"] = brand_book_text
 
             if onboarding_upload:
                 uploaded_onboarding = load_text_from_upload(onboarding_upload)
                 if uploaded_onboarding:
                     onboarding_text = (onboarding_text + "\n" + uploaded_onboarding).strip()
                     st.session_state["onboarding_text"] = onboarding_text
-                    st.session_state["onboarding_text_input"] = onboarding_text
+            else:
+                st.session_state["onboarding_text"] = onboarding_text
 
             if home_page_upload:
                 uploaded_home_page = load_text_from_upload(home_page_upload)
                 if uploaded_home_page:
                     home_page_text = (home_page_text + "\n" + uploaded_home_page).strip()
                     st.session_state["home_page_text"] = home_page_text
-                    st.session_state["home_page_text_input"] = home_page_text
+            else:
+                st.session_state["home_page_text"] = home_page_text
 
             st.header("6. Keyword Inputs")
             paramount_kw_raw = st.text_area(
