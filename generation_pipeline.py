@@ -175,6 +175,7 @@ def refine_draft(
     primary_kw = seo_entry.primary_keyword if seo_entry else None
     supporting_kws = seo_entry.supporting_keywords if seo_entry else []
 
+    page_schema = get_page_schema(page.page_type)
     example = get_example_for(style_profile, page.page_type)
     example_block = (
         f"\nReference example for tone/structure (do not copy wording):\n{json.dumps(example, indent=2)}"
