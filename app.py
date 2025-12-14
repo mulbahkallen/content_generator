@@ -21,6 +21,7 @@ from utils import (
 from generation_pipeline import generate_medical_page
 from prompt_builder import analyze_homepage_copy
 from rule_storage import RuleStore, load_core_rules
+from golden_rules import embed_rule_chunks, split_into_chunks
 
 
 st.set_page_config(
