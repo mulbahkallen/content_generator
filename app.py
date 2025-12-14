@@ -466,7 +466,7 @@ def main():
                     "Brand book text (optional)",
                     value=st.session_state.get("brand_book_text", ""),
                     height=140,
-                    key="brand_book_text",
+                    key="brand_book_text_input",
                 )
             with onboard_col:
                 onboarding_upload = st.file_uploader(
@@ -476,7 +476,7 @@ def main():
                     "Onboarding notes (optional)",
                     value=st.session_state.get("onboarding_text", ""),
                     height=140,
-                    key="onboarding_text",
+                    key="onboarding_text_input",
                 )
 
             home_page_upload = st.file_uploader(
@@ -486,7 +486,7 @@ def main():
                 "Home page reference (optional)",
                 value=st.session_state.get("home_page_text", ""),
                 height=140,
-                key="home_page_text",
+                key="home_page_text_input",
             )
 
             if brand_book_upload:
