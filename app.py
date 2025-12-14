@@ -1928,7 +1928,7 @@ def main():
             )
             st.caption("Homepage copy helps the tool mirror tone and CTA pacing.")
 
-        if st.button("Run step-by-step generation", use_container_width=True):
+        if st.button("Prepare diagnostics session", use_container_width=True):
             primary_keywords = parse_keywords(diag_primary_raw)
             supporting_keywords = parse_keywords(diag_supporting_raw)
             paramount_keywords = parse_keywords(diag_paramount_raw)
@@ -2027,52 +2027,113 @@ def main():
 
             st.session_state["diagnostic_prompt"] = prompt
             st.session_state["diagnostic_prompt_meta"] = safe_json_loads(prompt_diagnostics)
+            st.session_state["diag_context"] = {
+                "brand_info": brand_info,
+                "page": page,
+                "seo_entry": seo_entry,
+                "style": diag_style,
+            }
+            st.session_state["diagnostic_result"] = {
+                "outline": None,
+                "draft": None,
+                "final": None,
+                "page": page,
+                "home_profile": home_page_profile,
+                "dynamic_rules": [chunk.metadata for chunk in dynamic_rules],
+            }
+            st.success(
+                "Diagnostics session ready. Use the Proceed buttons below to run each stage."
+            )
 
-            try:
-                with st.spinner("Creating outline..."):
-                    outline = generate_outline(
-                        client,
-                        brand_info,
-                        page,
-                        seo_entry,
-                        diag_style,
-                        model_name=st.session_state.get("model_name", DEFAULT_MODEL_NAME),
-                    )
+        diag_context = st.session_state.get("diag_context")
+        diagnostic_result = st.session_state.get("diagnostic_result") or {}
+        status_placeholder = st.empty()
 
-                with st.spinner("Drafting copy from outline..."):
-                    draft = generate_draft(
-                        client,
-                        brand_info,
-                        page,
-                        seo_entry,
-                        diag_style,
-                        outline,
-                        model_name=st.session_state.get("model_name", DEFAULT_MODEL_NAME),
-                    )
+        if diag_context:
+            with st.container():
+                st.markdown("#### Manual stage controls")
+                st.caption(
+                    "Run each generation stage on demand. Results stay visible after each step."
+                )
 
-                with st.spinner("Refining draft with golden rules and SEO cues..."):
-                    refined = refine_draft(
-                        client,
-                        brand_info,
-                        page,
-                        seo_entry,
-                        diag_style,
-                        draft,
-                        model_name=st.session_state.get("model_name", DEFAULT_MODEL_NAME),
-                    )
+                outline_run = st.button(
+                    "Proceed to outline", use_container_width=True, disabled=bool(diagnostic_result.get("outline"))
+                )
+                if outline_run:
+                    try:
+                        status_placeholder.info("Step 1/3: Creating outline...")
+                        with st.spinner("Creating outline..."):
+                            outline = generate_outline(
+                                client,
+                                diag_context["brand_info"],
+                                diag_context["page"],
+                                diag_context["seo_entry"],
+                                diag_context["style"],
+                                model_name=st.session_state.get("model_name", DEFAULT_MODEL_NAME),
+                            )
+                        diagnostic_result["outline"] = outline
+                        st.session_state["diagnostic_result"] = diagnostic_result
+                        status_placeholder.success(
+                            "Outline created. Proceed when ready to draft the copy."
+                        )
+                    except Exception as exc:
+                        st.session_state["diagnostic_result"] = None
+                        status_placeholder.empty()
+                        st.error(f"Diagnostics run failed: {exc}")
 
-                st.session_state["diagnostic_result"] = {
-                    "outline": outline,
-                    "draft": draft,
-                    "final": refined,
-                    "page": page,
-                    "home_profile": home_page_profile,
-                    "dynamic_rules": [chunk.metadata for chunk in dynamic_rules],
-                }
-                st.success("Step-by-step pipeline complete. Review the sections below.")
-            except Exception as exc:
-                st.session_state["diagnostic_result"] = None
-                st.error(f"Diagnostics run failed: {exc}")
+                draft_run = st.button(
+                    "Proceed to draft", use_container_width=True, disabled=not diagnostic_result.get("outline") or bool(diagnostic_result.get("draft"))
+                )
+                if draft_run:
+                    try:
+                        status_placeholder.info("Step 2/3: Drafting copy from outline...")
+                        with st.spinner("Drafting copy from outline..."):
+                            draft = generate_draft(
+                                client,
+                                diag_context["brand_info"],
+                                diag_context["page"],
+                                diag_context["seo_entry"],
+                                diag_context["style"],
+                                diagnostic_result.get("outline", {}),
+                                model_name=st.session_state.get("model_name", DEFAULT_MODEL_NAME),
+                            )
+                        diagnostic_result["draft"] = draft
+                        st.session_state["diagnostic_result"] = diagnostic_result
+                        status_placeholder.success(
+                            "Draft created. Proceed when ready to refine with rules and SEO cues."
+                        )
+                    except Exception as exc:
+                        st.session_state["diagnostic_result"] = None
+                        status_placeholder.empty()
+                        st.error(f"Diagnostics run failed: {exc}")
+
+                refine_run = st.button(
+                    "Proceed to refinement",
+                    use_container_width=True,
+                    disabled=not diagnostic_result.get("draft") or bool(diagnostic_result.get("final")),
+                )
+                if refine_run:
+                    try:
+                        status_placeholder.info(
+                            "Step 3/3: Refining draft with golden rules and SEO cues..."
+                        )
+                        with st.spinner("Refining draft with golden rules and SEO cues..."):
+                            refined = refine_draft(
+                                client,
+                                diag_context["brand_info"],
+                                diag_context["page"],
+                                diag_context["seo_entry"],
+                                diag_context["style"],
+                                diagnostic_result.get("draft", {}),
+                                model_name=st.session_state.get("model_name", DEFAULT_MODEL_NAME),
+                            )
+                        diagnostic_result["final"] = refined
+                        st.session_state["diagnostic_result"] = diagnostic_result
+                        status_placeholder.success("Refinement complete. Review outputs below.")
+                    except Exception as exc:
+                        st.session_state["diagnostic_result"] = None
+                        status_placeholder.empty()
+                        st.error(f"Diagnostics run failed: {exc}")
 
         diagnostic_result = st.session_state.get("diagnostic_result")
         if diagnostic_result:
