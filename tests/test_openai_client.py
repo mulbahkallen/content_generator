@@ -15,6 +15,18 @@ def test_dedupe_prompt_lines_removes_duplicate_non_empty_lines():
     assert _dedupe_prompt_lines(prompt) == "Line A\nLine B\n\nLine C"
 
 
+def test_dedupe_prompt_lines_collapses_redundant_blank_lines():
+    prompt = "Line A\n\n\nLine B\n\n\n\nLine C"
+
+    assert _dedupe_prompt_lines(prompt) == "Line A\n\nLine B\n\nLine C"
+
+
+def test_dedupe_prompt_lines_avoids_work_when_no_duplicates():
+    prompt = "First line\nSecond line\n\nThird line"
+
+    assert _dedupe_prompt_lines(prompt) == prompt
+
+
 def test_sanitize_messages_preserves_original_and_deduplicates_content():
     messages = [
         {"role": "user", "content": "Repeat\nRepeat\nUnique"},

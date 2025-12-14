@@ -10,18 +10,32 @@ from settings import DEFAULT_MODEL_NAME
 
 
 def _dedupe_prompt_lines(text: str, seen: Optional[set] = None) -> str:
-    """Remove duplicate non-empty lines to avoid repeating instructions in prompts."""
+    """Remove duplicate non-empty lines and collapse redundant blanks."""
 
     seen = seen if seen is not None else set()
     deduped: List[str] = []
+    last_blank = False
+    changed = False
+
     for line in text.splitlines():
         normalized = line.strip()
-        if normalized:
+
+        if not normalized:
+            if last_blank:
+                changed = True
+                continue
+            last_blank = True
+        else:
+            last_blank = False
             if normalized in seen:
+                changed = True
                 continue
             seen.add(normalized)
-        deduped.append(line)
-    return "\n".join(deduped).strip()
+
+        deduped.append(line.rstrip())
+
+    result = "\n".join(deduped).strip()
+    return result if changed else text.strip()
 
 
 def _sanitize_messages(messages: List[Dict[str, str]]) -> List[Dict[str, str]]:
