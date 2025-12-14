@@ -458,23 +458,60 @@ def main():
                         st.error(f"Failed to embed golden rules: {exc}")
 
             st.caption("Upload brand and onboarding references (plain text, DOCX, or PDF)")
-            brand_book_upload = st.file_uploader(
-                "Brand book copy", type=["txt", "docx", "pdf"], key="brand_book_uploader"
-            )
-            onboarding_upload = st.file_uploader(
-                "Client onboarding form", type=["txt", "docx", "pdf"], key="onboarding_uploader"
-            )
+            brand_col, onboard_col = st.columns(2)
+            with brand_col:
+                brand_book_upload = st.file_uploader(
+                    "Brand book copy", type=["txt", "docx", "pdf"], key="brand_book_uploader"
+                )
+                brand_book_text = st.text_area(
+                    "Brand book text (optional)",
+                    value=st.session_state.get("brand_book_text", ""),
+                    height=140,
+                    key="brand_book_text",
+                )
+            with onboard_col:
+                onboarding_upload = st.file_uploader(
+                    "Client onboarding form", type=["txt", "docx", "pdf"], key="onboarding_uploader"
+                )
+                onboarding_text = st.text_area(
+                    "Onboarding notes (optional)",
+                    value=st.session_state.get("onboarding_text", ""),
+                    height=140,
+                    key="onboarding_text",
+                )
+
             home_page_upload = st.file_uploader(
                 "Reference home page copy", type=["txt", "docx", "pdf"], key="home_page_uploader"
             )
-            brand_book_text = load_text_from_upload(brand_book_upload)
-            onboarding_text = load_text_from_upload(onboarding_upload)
-            home_page_text = load_text_from_upload(home_page_upload)
-            if brand_book_text:
+            home_page_text = st.text_area(
+                "Home page reference (optional)",
+                value=st.session_state.get("home_page_text", ""),
+                height=140,
+                key="home_page_text",
+            )
+
+            if brand_book_upload:
+                uploaded_brand = load_text_from_upload(brand_book_upload)
+                if uploaded_brand:
+                    brand_book_text = (brand_book_text + "\n" + uploaded_brand).strip()
+                    st.session_state["brand_book_text"] = brand_book_text
+            else:
                 st.session_state["brand_book_text"] = brand_book_text
-            if onboarding_text:
+
+            if onboarding_upload:
+                uploaded_onboarding = load_text_from_upload(onboarding_upload)
+                if uploaded_onboarding:
+                    onboarding_text = (onboarding_text + "\n" + uploaded_onboarding).strip()
+                    st.session_state["onboarding_text"] = onboarding_text
+            else:
                 st.session_state["onboarding_text"] = onboarding_text
-            if home_page_text:
+
+            if home_page_upload:
+                uploaded_home_page = load_text_from_upload(home_page_upload)
+                if uploaded_home_page:
+                    home_page_text = (home_page_text + "\n" + uploaded_home_page).strip()
+                    st.session_state["home_page_text"] = home_page_text
+            else:
                 st.session_state["home_page_text"] = home_page_text
 
             st.header("6. Keyword Inputs")
