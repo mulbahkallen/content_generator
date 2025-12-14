@@ -73,8 +73,15 @@ def analyze_homepage_copy(home_page_copy: str) -> Dict[str, str]:
     }
 
 
-def build_query_text(industry: str, page_type: str, location: str, intent: str, tone: str) -> str:
-    parts = [industry, page_type, location, intent, tone]
+def build_query_text(
+    industry: str,
+    page_type: str,
+    location: str,
+    intent: str,
+    tone: str,
+    service: str = "",
+) -> str:
+    parts = [industry, page_type, location, intent, tone, service]
     return " | ".join(p for p in parts if p)
 
 
@@ -132,6 +139,7 @@ PAGE REQUEST:
 - Page type: {page_info.get('page_type', '')}
 - Page name: {page_info.get('page_name', '')}
 - Page topic: {page_info.get('topic', '')}
+- Service focus: {page_info.get('service', 'None specified')}
 - Audience intent: {page_info.get('intent', '')}
 - Goal: {page_info.get('goal', '')}
 

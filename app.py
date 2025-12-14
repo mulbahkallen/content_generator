@@ -1471,10 +1471,16 @@ def main():
             )
             st.success("Primary keyword list updated from generated lab suggestions.")
 
+        available_lab_services = parse_keywords(
+            st.session_state.get("lab_services_raw", "")
+        )
+
         with st.form("qa_lab_form"):
             use_builder_defaults = st.checkbox(
                 "Prefill with Build tab brand info when available", value=True
             )
+
+            lab_selected_service = st.session_state.get("lab_selected_service")
 
             default_brand = st.session_state.get("brand_name", "Sample Brand")
             default_industry = st.session_state.get("industry", "Consulting")
@@ -1553,6 +1559,24 @@ def main():
                     options=["home", "service", "about", "location"],
                     key="lab_page_type",
                 )
+                if lab_page_type == "service":
+                    if available_lab_services:
+                        st.session_state.setdefault("lab_selected_service", available_lab_services[0])
+                        lab_selected_service = st.selectbox(
+                            "Service focus",
+                            options=available_lab_services,
+                            key="lab_selected_service",
+                            help="Choose the exact service you want this page to target.",
+                        )
+                    else:
+                        st.session_state.pop("lab_selected_service", None)
+                        lab_selected_service = None
+                        st.info(
+                            "Add services above to target a specific offering when generating a service page."
+                        )
+                else:
+                    st.session_state.pop("lab_selected_service", None)
+                    lab_selected_service = None
                 lab_location = st.text_input(
                     "Primary location",
                     value=default_location if use_builder_defaults else "Remote",
@@ -1639,25 +1663,36 @@ def main():
                 slug=lab_slug.strip() or "test-page",
                 page_name=lab_page_name.strip() or "Quick Test Page",
                 page_type=lab_page_type,
+                service_name=lab_selected_service if lab_page_type == "service" else None,
             )
             supporting_list = [
                 s.strip() for s in lab_supporting_keywords.split(",") if s.strip()
             ]
 
+            if lab_page.page_type == "service" and lab_selected_service:
+                if lab_selected_service not in supporting_list:
+                    supporting_list.append(lab_selected_service)
+
+            primary_keyword_value = lab_primary_keyword.strip()
+            if lab_page.page_type == "service" and not primary_keyword_value:
+                primary_keyword_value = lab_selected_service or None
+
             lab_seo = SEOEntry(
                 slug=lab_page.slug,
-                primary_keyword=lab_primary_keyword.strip() or None,
+                primary_keyword=primary_keyword_value or None,
                 supporting_keywords=supporting_list,
             )
 
             try:
+                topic_for_prompt = lab_topic or lab_selected_service or lab_page.page_name
+
                 lab_final = generate_medical_page(
                     client,
                     lab_brand_info,
                     lab_page,
                     lab_seo,
                     lab_style_profile,
-                    topic=lab_topic,
+                    topic=topic_for_prompt,
                     paramount_keywords=lab_paramount_list,
                     primary_keywords=lab_primary_list,
                     brand_book=brand_book_text,
