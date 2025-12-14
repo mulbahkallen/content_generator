@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 from typing import List
 
 import numpy as np
@@ -46,10 +47,20 @@ def split_into_chunks(text: str, min_tokens: int = 300, max_tokens: int = 800) -
 
 
 def embed_rule_chunks(client: OpenAI, chunks: List[str]) -> List[RuleChunk]:
+    """Embed rule chunks while continuing past transient failures."""
+
+    logger = logging.getLogger(__name__)
     embedded: List[RuleChunk] = []
+
     for chunk in chunks:
-        response = client.embeddings.create(model="text-embedding-ada-002", input=chunk)
-        embedded.append(RuleChunk(text=chunk, embedding=response.data[0].embedding))
+        try:
+            response = client.embeddings.create(
+                model="text-embedding-ada-002", input=chunk
+            )
+            embedded.append(RuleChunk(text=chunk, embedding=response.data[0].embedding))
+        except Exception as exc:  # noqa: BLE001 (propagate controlled warning instead)
+            logger.warning("Failed to embed rule chunk; skipping. Error: %s", exc)
+
     return embedded
 
 
@@ -66,10 +77,16 @@ def retrieve_relevant_rules(
     if not embedded_rules:
         return []
 
-    query_response = client.embeddings.create(
-        model="text-embedding-ada-002", input=query
-    )
-    query_vec = np.array(query_response.data[0].embedding)
+    try:
+        query_response = client.embeddings.create(
+            model="text-embedding-ada-002", input=query
+        )
+        query_vec = np.array(query_response.data[0].embedding)
+    except Exception:  # noqa: BLE001 (surface gracefully to caller)
+        logging.getLogger(__name__).warning(
+            "Failed to embed query for rule retrieval; returning no results."
+        )
+        return []
 
     scored = []
     for rc in embedded_rules:
