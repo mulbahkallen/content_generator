@@ -22,7 +22,7 @@ MEDICAL_PAGE_SCHEMA = {
     "industry": "string",
     "meta": {
         "tone_descriptors": ["string", "string", "string"],
-        "target_total_word_count": 1100,
+        "target_total_word_count": 1500,
         "paramount_keywords_used": ["string"],
         "primary_keywords_used": ["string"],
     },

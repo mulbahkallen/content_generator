@@ -382,6 +382,14 @@ def init_session_state():
         st.session_state["lab_generated_service_keywords"] = []
     if "lab_services_raw" not in st.session_state:
         st.session_state["lab_services_raw"] = ""
+    if "lab_reference_cache" not in st.session_state:
+        st.session_state["lab_reference_cache"] = {
+            "brand_book_text": "",
+            "onboarding_text": "",
+            "home_page_text": "",
+        }
+    if "lab_reuse_cached_refs" not in st.session_state:
+        st.session_state["lab_reuse_cached_refs"] = True
 
 def main():
     init_session_state()
@@ -1164,6 +1172,16 @@ def main():
                     st.error(f"Failed to embed golden rules: {exc}")
 
         st.subheader("Reference assets for this test")
+        st.caption(
+            "Uploads are cached for this session so you can tweak page type or keywords and re-run without re-uploading."
+        )
+        reuse_cached_refs = st.checkbox(
+            "Reuse cached references when no upload/text is provided",
+            value=st.session_state.get("lab_reuse_cached_refs", True),
+            key="lab_reuse_cached_refs",
+            help="Keeps your last uploaded or pasted references available for back-to-back test runs.",
+        )
+        cached_refs = st.session_state.get("lab_reference_cache", {})
         asset_col1, asset_col2 = st.columns(2)
         with asset_col1:
             lab_brand_book_upload = st.file_uploader(
@@ -1202,6 +1220,11 @@ def main():
             key="lab_home_page_text",
         )
 
+        if reuse_cached_refs:
+            lab_brand_book_text = lab_brand_book_text or cached_refs.get("brand_book_text", "")
+            lab_onboarding_text = lab_onboarding_text or cached_refs.get("onboarding_text", "")
+            lab_home_page_text = lab_home_page_text or cached_refs.get("home_page_text", "")
+
         if lab_brand_book_upload:
             uploaded_brand = load_text_from_upload(lab_brand_book_upload)
             if uploaded_brand:
@@ -1218,6 +1241,10 @@ def main():
                 lab_home_page_text = (lab_home_page_text + "\n" + uploaded_home_page).strip()
                 st.session_state["home_page_text"] = lab_home_page_text
 
+        st.session_state["brand_book_text"] = lab_brand_book_text
+        st.session_state["onboarding_text"] = lab_onboarding_text
+        st.session_state["home_page_text"] = lab_home_page_text
+
         lab_supporting_doc_text = "\n\n".join(
             [
                 t
@@ -1225,6 +1252,13 @@ def main():
                 if t.strip()
             ]
         ).strip()
+
+        if lab_supporting_doc_text:
+            st.session_state["lab_reference_cache"] = {
+                "brand_book_text": lab_brand_book_text,
+                "onboarding_text": lab_onboarding_text,
+                "home_page_text": lab_home_page_text,
+            }
 
         st.subheader("QA lab keyword helpers")
         st.caption(
