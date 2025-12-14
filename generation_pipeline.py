@@ -222,6 +222,7 @@ def generate_medical_page(
     primary_keywords: List[str],
     brand_book: str,
     onboarding_notes: str,
+    home_page_copy: str,
     golden_rule_chunks: List[RuleChunk],
     top_rules: int = 12,
 ) -> Dict[str, Any]:
@@ -260,6 +261,7 @@ Project inputs:
 - Primary keywords: {', '.join(target_keywords) if target_keywords else 'NONE'}
 - Onboarding insights: {onboarding_notes or 'NONE PROVIDED'}
 - Brand book highlights: {brand_book or 'NONE PROVIDED'}
+- Home page reference tone/content: {home_page_copy or 'NONE PROVIDED'}
 
 Golden rule excerpts to honor (most relevant first):
 {rule_text or 'No golden rules provided.'}
