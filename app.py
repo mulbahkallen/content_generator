@@ -132,6 +132,49 @@ Only return JSON.
     primary = [kw for kw in primary if isinstance(kw, str) and kw.strip()]
     return {"paramount_keywords": paramount, "primary_keywords": primary}
 
+
+def collect_readiness_gaps(
+    *,
+    brand_name: str,
+    industry: str,
+    location: str,
+    audience_intent: str,
+    paramount_kw_raw: str,
+    primary_kw_raw: str,
+    pages_df: pd.DataFrame,
+    rule_store_ready: bool,
+    golden_rule_mode: str,
+):
+    """Identify blocking gaps and softer warnings before running generation."""
+
+    errors = []
+    warnings = []
+
+    if not brand_name.strip():
+        errors.append("Brand / Business Name is required to personalize copy.")
+    if not industry.strip():
+        errors.append("Industry / Niche is required to guide tone and claims.")
+    if not location.strip():
+        errors.append("Primary location is required to localize SEO and service language.")
+    if not audience_intent.strip():
+        errors.append("Audience intent helps align CTA pacing; please set it.")
+
+    if pages_df is None or pages_df.empty:
+        errors.append("Add at least one page to the sitemap before generating copy.")
+
+    paramount_keywords = parse_keywords(paramount_kw_raw)
+    primary_keywords = parse_keywords(primary_kw_raw)
+
+    if not primary_keywords:
+        errors.append("Provide at least one primary keyword for SEO grounding.")
+    if not paramount_keywords:
+        warnings.append("Paramount keywords are empty; content will rely on primary keywords only.")
+
+    if golden_rule_mode == "retrieval" and not rule_store_ready:
+        warnings.append("No embedded golden rules found; consider embedding for compliance coverage.")
+
+    return errors, warnings, paramount_keywords, primary_keywords
+
 # Subtle UI theming for a friendlier workspace
 st.markdown(
     """
@@ -619,71 +662,73 @@ def main():
                 except Exception as exc:
                     st.error(f"Failed to load example JSON: {exc}")
 
-            st.header("5. Golden Rules & Assets")
-            st.caption("Hybrid static + retrieval: core rules load automatically; embed the Golden Rule Framework for semantic lookups.")
-
-            with st.expander("View static core rules", expanded=False):
-                st.json(st.session_state.get("static_rules", {}))
-
-            golden_rule_mode = st.radio(
-                "Dynamic rule application",
-                options=["retrieval", "full_text"],
-                format_func=lambda opt: (
-                    "Retrieve top relevant chunks"
-                    if opt == "retrieval"
-                    else "Inject the full rule set (no chunking)"
-                ),
-                index=0 if st.session_state.get("golden_rule_mode") == "retrieval" else 1,
-                key="golden_rule_mode_radio",
-                help="Use chunked retrieval for concise prompts or inject the full text when you need every rule applied.",
-            )
-            st.session_state["golden_rule_mode"] = golden_rule_mode
-
-            if golden_rule_mode == "retrieval":
-                top_n = st.slider(
-                    "How many rule chunks to inject",
-                    min_value=3,
-                    max_value=24,
-                    value=st.session_state.get("golden_rule_top_n", 8),
-                    step=1,
-                    help="Controls how many embedded rule chunks are pulled into each prompt.",
-                )
-                st.session_state["golden_rule_top_n"] = top_n
-            else:
-                st.info(
-                    "Full rule set will be sent as one block. Ensure it fits the selected model's context window."
+            with st.expander("5. Golden Rules & Assets", expanded=False):
+                st.caption(
+                    "Hybrid static + retrieval: core rules load automatically; embed the Golden Rule Framework for semantic lookups."
                 )
 
-            golden_rule_file = st.file_uploader(
-                "Golden Rule Framework document (TXT, DOCX, or PDF)",
-                type=["txt", "docx", "pdf"],
-                key="golden_rule_upload",
-            )
-            golden_rule_text = st.text_area(
-                "Paste or edit the framework", value=st.session_state.get("golden_rule_text", ""), height=200
-            )
+                with st.expander("View static core rules", expanded=False):
+                    st.json(st.session_state.get("static_rules", {}))
 
-            if st.button("Embed & save Golden Rule Framework", use_container_width=True):
-                combined_rule_text = golden_rule_text + "\n" + load_text_from_upload(golden_rule_file)
-                combined_rule_text = combined_rule_text.strip()
-                if not combined_rule_text:
-                    st.error("Please provide golden rule content to embed.")
+                golden_rule_mode = st.radio(
+                    "Dynamic rule application",
+                    options=["retrieval", "full_text"],
+                    format_func=lambda opt: (
+                        "Retrieve top relevant chunks"
+                        if opt == "retrieval"
+                        else "Inject the full rule set (no chunking)"
+                    ),
+                    index=0 if st.session_state.get("golden_rule_mode") == "retrieval" else 1,
+                    key="golden_rule_mode_radio",
+                    help="Use chunked retrieval for concise prompts or inject the full text when you need every rule applied.",
+                )
+                st.session_state["golden_rule_mode"] = golden_rule_mode
+
+                if golden_rule_mode == "retrieval":
+                    top_n = st.slider(
+                        "How many rule chunks to inject",
+                        min_value=3,
+                        max_value=24,
+                        value=st.session_state.get("golden_rule_top_n", 8),
+                        step=1,
+                        help="Controls how many embedded rule chunks are pulled into each prompt.",
+                    )
+                    st.session_state["golden_rule_top_n"] = top_n
                 else:
-                    try:
-                        store = st.session_state.get("rule_store") or RuleStore()
-                        store.build(client, combined_rule_text)
-                        store.save(RULE_STORE_PATH)
-                        st.session_state["rule_store"] = store
-                        st.session_state["golden_rule_text"] = combined_rule_text
-                        st.success(
-                            f"Embedded {len(store.chunks)} rule chunk(s) with tags; saved for reuse across sessions."
-                        )
-                        with st.expander("Chunk preview", expanded=False):
-                            for idx, chunk in enumerate(store.chunks[:6]):
-                                st.markdown(f"**Chunk {idx+1}** — tags: {', '.join(chunk.metadata.get('tags', []))}")
-                                st.caption(chunk.text[:400] + ("..." if len(chunk.text) > 400 else ""))
-                    except Exception as exc:
-                        st.error(f"Failed to embed golden rules: {exc}")
+                    st.info(
+                        "Full rule set will be sent as one block. Ensure it fits the selected model's context window."
+                    )
+
+                golden_rule_file = st.file_uploader(
+                    "Golden Rule Framework document (TXT, DOCX, or PDF)",
+                    type=["txt", "docx", "pdf"],
+                    key="golden_rule_upload",
+                )
+                golden_rule_text = st.text_area(
+                    "Paste or edit the framework", value=st.session_state.get("golden_rule_text", ""), height=200
+                )
+
+                if st.button("Embed & save Golden Rule Framework", use_container_width=True):
+                    combined_rule_text = golden_rule_text + "\n" + load_text_from_upload(golden_rule_file)
+                    combined_rule_text = combined_rule_text.strip()
+                    if not combined_rule_text:
+                        st.error("Please provide golden rule content to embed.")
+                    else:
+                        try:
+                            store = st.session_state.get("rule_store") or RuleStore()
+                            store.build(client, combined_rule_text)
+                            store.save(RULE_STORE_PATH)
+                            st.session_state["rule_store"] = store
+                            st.session_state["golden_rule_text"] = combined_rule_text
+                            st.success(
+                                f"Embedded {len(store.chunks)} rule chunk(s) with tags; saved for reuse across sessions."
+                            )
+                            with st.expander("Chunk preview", expanded=False):
+                                for idx, chunk in enumerate(store.chunks[:6]):
+                                    st.markdown(f"**Chunk {idx+1}** — tags: {', '.join(chunk.metadata.get('tags', []))}")
+                                    st.caption(chunk.text[:400] + ("..." if len(chunk.text) > 400 else ""))
+                        except Exception as exc:
+                            st.error(f"Failed to embed golden rules: {exc}")
 
             st.caption("Upload brand and onboarding references (plain text, DOCX, or PDF)")
             brand_col, onboard_col = st.columns(2)
@@ -847,6 +892,33 @@ def main():
                 ).strip()
             primary_kw_raw = st.session_state.get("primary_kw_raw", "")
 
+            rule_store_ready = bool(
+                st.session_state.get("rule_store")
+                and st.session_state.get("rule_store").is_ready
+            )
+            readiness_errors, readiness_warnings, paramount_keywords_ready, primary_keywords_ready = collect_readiness_gaps(
+                brand_name=brand_name,
+                industry=industry,
+                location=location,
+                audience_intent=audience_intent,
+                paramount_kw_raw=paramount_kw_raw,
+                primary_kw_raw=primary_kw_raw,
+                pages_df=pages_df,
+                rule_store_ready=rule_store_ready,
+                golden_rule_mode=golden_rule_mode,
+            )
+
+            st.subheader("Readiness check")
+            with st.container():
+                if readiness_errors:
+                    st.error("Resolve these items before generating:")
+                    st.markdown("\n".join(f"• {msg}" for msg in readiness_errors))
+                else:
+                    st.success("Inputs look good. You can generate site copy now.")
+
+                for warn in readiness_warnings:
+                    st.warning(warn)
+
             st.subheader("Service-based keyword helper")
             services_raw = st.text_area(
                 "List of services (one per line or comma separated)",
@@ -919,6 +991,17 @@ def main():
         # ----------------------------------------
         with col_right:
             st.header("Results")
+            with st.container():
+                st.markdown("**Project snapshot**")
+                snapshot_items = [
+                    f"**Brand:** {brand_name or 'Not set'}",
+                    f"**Industry:** {industry or 'Not set'}",
+                    f"**Location:** {location or 'Not set'}",
+                    f"**Model:** {st.session_state.get('model_name', DEFAULT_MODEL_NAME)}",
+                    f"**Rule mode:** {st.session_state.get('golden_rule_mode', 'retrieval')}",
+                ]
+                st.caption(" | ".join(snapshot_items))
+
             cols_actions = st.columns([0.4, 0.6])
             with cols_actions[0]:
                 if st.button("Clear results", use_container_width=True):
@@ -926,8 +1009,8 @@ def main():
                     st.success("Results cleared. Ready for a fresh run.")
 
         if generate_button and api_ok:
-            if not brand_name or not industry:
-                st.error("Please fill in at least Brand / Business Name and Industry / Niche.")
+            if readiness_errors:
+                st.error("Please address the readiness items before generating.")
             else:
                 brand_info = BrandInfo(
                     name=brand_name.strip(),
@@ -939,8 +1022,8 @@ def main():
                     notes=notes.strip(),
                 )
 
-                paramount_keywords = parse_keywords(paramount_kw_raw)
-                primary_keywords = parse_keywords(primary_kw_raw)
+                paramount_keywords = paramount_keywords_ready
+                primary_keywords = primary_keywords_ready
                 st.session_state["paramount_kw_cache"] = paramount_keywords
                 st.session_state["primary_kw_cache"] = primary_keywords
                 rule_store: RuleStore = st.session_state.get("rule_store")
