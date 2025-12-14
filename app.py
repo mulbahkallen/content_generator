@@ -19,9 +19,14 @@ from utils import (
     render_page_preview,
     safe_json_loads,
 )
-from generation_pipeline import generate_medical_page
-from prompt_builder import analyze_homepage_copy
-from rule_storage import RuleStore, load_core_rules
+from generation_pipeline import (
+    generate_draft,
+    generate_medical_page,
+    generate_outline,
+    refine_draft,
+)
+from prompt_builder import analyze_homepage_copy, build_hybrid_prompt, build_query_text
+from rule_storage import RuleChunk, RuleStore, load_core_rules
 from golden_rules import embed_rule_chunks, split_into_chunks
 
 
@@ -399,6 +404,12 @@ def init_session_state():
         st.session_state["uploaded_examples"] = {}
     if "lab_result" not in st.session_state:
         st.session_state["lab_result"] = None
+    if "diagnostic_result" not in st.session_state:
+        st.session_state["diagnostic_result"] = None
+    if "diagnostic_prompt" not in st.session_state:
+        st.session_state["diagnostic_prompt"] = ""
+    if "diagnostic_prompt_meta" not in st.session_state:
+        st.session_state["diagnostic_prompt_meta"] = {}
     if "rule_store" not in st.session_state:
         st.session_state["rule_store"] = RuleStore()
     if "golden_rule_text" not in st.session_state:
@@ -477,7 +488,11 @@ def main():
         st.error(str(exc))
         st.stop()
 
-    build_tab, lab_tab = st.tabs(["Build site copy", "Content QA lab"])
+    build_tab, lab_tab, diag_tab = st.tabs([
+        "Build site copy",
+        "Content QA lab",
+        "Pipeline diagnostics",
+    ])
 
     # ----------------------------------------
     # TAB 1 – SITE COPY BUILDER
@@ -1746,6 +1761,361 @@ def main():
 
         elif api_ok:
             st.info("Run a quick generation to preview outputs without configuring the full site.")
+
+    # ----------------------------------------
+    # TAB 3 – PIPELINE DIAGNOSTICS
+    # ----------------------------------------
+    with diag_tab:
+        st.header("Pipeline diagnostics")
+        st.caption(
+            "Trace the prompt, retrieved rules, and each generation step to see how copy is formed."
+        )
+
+        use_builder_defaults = st.checkbox(
+            "Use Build tab defaults when available", value=True, key="diag_use_defaults"
+        )
+
+        default_brand = st.session_state.get("brand_name", "Sample Brand")
+        default_industry = st.session_state.get("industry", "Healthcare")
+        default_location = st.session_state.get("location", "")
+        default_voice = st.session_state.get("voice_tone", "Confident and clear.")
+        default_target = st.session_state.get(
+            "target_audience", "Patients comparing care options."
+        )
+        default_uvp = st.session_state.get("uvp", "")
+        default_notes = st.session_state.get("notes", "")
+        default_style = st.session_state.get("style_profile", STYLE_PROFILE_OPTIONS[0])
+
+        diag_col1, diag_col2 = st.columns(2)
+        with diag_col1:
+            diag_brand = st.text_input(
+                "Brand / Business Name",
+                value=default_brand if use_builder_defaults else "Sample Brand",
+            )
+            diag_industry_options = INDUSTRY_OPTIONS + [CUSTOM_INDUSTRY_OPTION]
+            diag_industry_base = default_industry if use_builder_defaults else INDUSTRY_OPTIONS[0]
+            diag_industry_choice = st.selectbox(
+                "Industry / Niche",
+                options=diag_industry_options,
+                index=diag_industry_options.index(
+                    diag_industry_base
+                    if diag_industry_base in diag_industry_options
+                    else CUSTOM_INDUSTRY_OPTION
+                ),
+                help="Choose an industry to guide voice and claims.",
+            )
+            diag_industry_custom = st.text_input(
+                "Custom industry / niche",
+                value=(diag_industry_base if diag_industry_choice == CUSTOM_INDUSTRY_OPTION else ""),
+                disabled=diag_industry_choice != CUSTOM_INDUSTRY_OPTION,
+            )
+            diag_industry = (
+                diag_industry_custom.strip()
+                if diag_industry_choice == CUSTOM_INDUSTRY_OPTION
+                else diag_industry_choice
+            )
+            diag_location = st.text_input(
+                "Primary location (city, state/region)",
+                value=default_location if use_builder_defaults else "",
+            )
+            diag_voice = st.text_area(
+                "Voice & tone",
+                value=default_voice if use_builder_defaults else "Clear, confident, and empathetic.",
+            )
+            diag_target = st.text_area(
+                "Target audience",
+                value=default_target if use_builder_defaults else "Healthcare consumers seeking clarity.",
+            )
+            diag_uvp = st.text_area(
+                "Unique value proposition",
+                value=default_uvp if use_builder_defaults else "",
+            )
+            diag_notes = st.text_area(
+                "Notes",
+                value=default_notes if use_builder_defaults else "",
+            )
+        with diag_col2:
+            diag_page_name = st.text_input(
+                "Page name",
+                value=st.session_state.get("page_topic", "Service Overview"),
+            )
+            diag_slug = st.text_input("Slug", value="services/diagnostic")
+            diag_page_type = st.selectbox(
+                "Page type",
+                options=["home", "service", "about", "location"],
+                index=1,
+            )
+            diag_service = st.text_input(
+                "Service focus (optional)",
+                value=st.session_state.get("lab_selected_service", ""),
+                help="Keep this blank for non-service pages.",
+            )
+            diag_intent = st.selectbox(
+                "Audience intent",
+                options=[
+                    "Informational",
+                    "Transactional",
+                    "Book an appointment",
+                    "Compare providers",
+                    "Patient education",
+                ],
+                index=0,
+                key="diag_intent",
+            )
+            diag_goal = st.text_input(
+                "Primary goal / CTA style",
+                value=st.session_state.get("page_goal", "Encourage visitors to book an appointment"),
+            )
+            diag_style = st.selectbox(
+                "Style profile",
+                options=STYLE_PROFILE_OPTIONS,
+                index=STYLE_PROFILE_OPTIONS.index(default_style)
+                if default_style in STYLE_PROFILE_OPTIONS
+                else 0,
+            )
+            diag_topic = st.text_input(
+                "Page topic (used for retrieval cues)",
+                value=st.session_state.get("page_topic", ""),
+            )
+
+        st.markdown("---")
+        st.subheader("SEO keywords & references")
+        diag_kw_col1, diag_kw_col2 = st.columns(2)
+        with diag_kw_col1:
+            diag_paramount_raw = st.text_area(
+                "Paramount keywords",
+                value="\n".join(st.session_state.get("paramount_kw_cache", [])),
+                help="High-level business descriptors (best + practice + location).",
+            )
+            diag_primary_raw = st.text_area(
+                "Primary keywords",
+                value="\n".join(st.session_state.get("primary_kw_cache", [])),
+                help="Primary SEO targets for this run.",
+            )
+        with diag_kw_col2:
+            diag_page_primary = st.text_input(
+                "Page-level primary keyword",
+                value=st.session_state.get("lab_primary_keyword", ""),
+                help="Used when this page must anchor to a specific keyword.",
+            )
+            diag_supporting_raw = st.text_area(
+                "Supporting keywords",
+                value="\n".join(
+                    st.session_state.get("lab_supporting_keywords", [])
+                    if isinstance(st.session_state.get("lab_supporting_keywords"), list)
+                    else parse_keywords(st.session_state.get("lab_supporting_keywords", ""))
+                ),
+                help="Secondary terms to sprinkle naturally.",
+            )
+
+        ref_col1, ref_col2 = st.columns(2)
+        with ref_col1:
+            diag_brand_book = st.text_area(
+                "Brand book text",
+                value=st.session_state.get("brand_book_text", ""),
+                height=140,
+            )
+            diag_onboarding = st.text_area(
+                "Onboarding notes",
+                value=st.session_state.get("onboarding_text", ""),
+                height=140,
+            )
+        with ref_col2:
+            diag_home_copy = st.text_area(
+                "Homepage reference copy",
+                value=st.session_state.get("home_page_text", ""),
+                height=140,
+            )
+            st.caption("Homepage copy helps the tool mirror tone and CTA pacing.")
+
+        if st.button("Run step-by-step generation", use_container_width=True):
+            primary_keywords = parse_keywords(diag_primary_raw)
+            supporting_keywords = parse_keywords(diag_supporting_raw)
+            paramount_keywords = parse_keywords(diag_paramount_raw)
+            page_primary_kw = diag_page_primary.strip()
+
+            seo_entry = None
+            if page_primary_kw or supporting_keywords:
+                seo_entry = SEOEntry(
+                    primary_keyword=page_primary_kw,
+                    supporting_keywords=supporting_keywords,
+                )
+
+            brand_info = BrandInfo(
+                name=diag_brand.strip(),
+                industry=diag_industry.strip(),
+                location=diag_location.strip(),
+                voice_tone=diag_voice.strip(),
+                target_audience=diag_target.strip(),
+                uvp=diag_uvp.strip(),
+                notes=diag_notes.strip(),
+            )
+            page = PageDefinition(
+                slug=diag_slug.strip() or "services/diagnostic",
+                page_name=diag_page_name.strip() or "Service Overview",
+                page_type=diag_page_type,
+                service_name=diag_service.strip() or None,
+            )
+
+            rule_store: RuleStore = st.session_state.get("rule_store")
+            golden_rule_text = st.session_state.get("golden_rule_text", "")
+            golden_rule_mode = st.session_state.get("golden_rule_mode", "retrieval")
+            top_rules = st.session_state.get("golden_rule_top_n", 12)
+
+            home_page_profile = analyze_homepage_copy(diag_home_copy or diag_brand_book)
+            topic_query = build_query_text(
+                diag_industry,
+                diag_page_type,
+                diag_location,
+                diag_intent,
+                home_page_profile.get("tone_indicators", diag_voice),
+                diag_service,
+            )
+
+            dynamic_rules: List[RuleChunk] = []
+            diag_page_tags = {
+                "home": ["structure", "tone", "cta"],
+                "service": ["seo", "structure", "cta"],
+                "about": ["tone", "structure"],
+                "location": ["seo", "structure", "cta"],
+            }.get(diag_page_type, ["general"])
+            use_full_rules = golden_rule_mode == "full_text" and golden_rule_text.strip()
+            if use_full_rules:
+                dynamic_rules = [
+                    RuleChunk(
+                        text=golden_rule_text.strip(),
+                        embedding=[],
+                        metadata={"tags": ["full_text"]},
+                    )
+                ]
+            elif rule_store is not None and getattr(rule_store, "is_ready", False):
+                dynamic_rules = rule_store.query(
+                    client, topic_query, top_k=top_rules, required_tags=diag_page_tags
+                )
+
+            prompt, prompt_diagnostics = build_hybrid_prompt(
+                st.session_state.get("static_rules", {}),
+                dynamic_rules,
+                brand_info={
+                    "name": brand_info.name,
+                    "industry": brand_info.industry,
+                    "location": brand_info.location,
+                    "voice_tone": brand_info.voice_tone,
+                    "target_audience": brand_info.target_audience,
+                    "uvp": brand_info.uvp,
+                    "notes": brand_info.notes,
+                },
+                page_info={
+                    "page_type": page.page_type,
+                    "page_name": page.page_name,
+                    "topic": diag_topic or page.page_name,
+                    "service": page.service_name or "None provided",
+                    "intent": diag_intent,
+                    "goal": diag_goal,
+                },
+                keywords={
+                    "paramount": paramount_keywords,
+                    "primary": primary_keywords,
+                    "page_primary": [page_primary_kw] if page_primary_kw else [],
+                    "page_supporting": supporting_keywords,
+                },
+                onboarding_notes=diag_onboarding,
+                brand_book=diag_brand_book,
+                home_page_copy=diag_home_copy,
+                home_page_profile=home_page_profile,
+            )
+
+            st.session_state["diagnostic_prompt"] = prompt
+            st.session_state["diagnostic_prompt_meta"] = safe_json_loads(prompt_diagnostics)
+
+            try:
+                with st.spinner("Creating outline..."):
+                    outline = generate_outline(
+                        client,
+                        brand_info,
+                        page,
+                        seo_entry,
+                        diag_style,
+                        model_name=st.session_state.get("model_name", DEFAULT_MODEL_NAME),
+                    )
+
+                with st.spinner("Drafting copy from outline..."):
+                    draft = generate_draft(
+                        client,
+                        brand_info,
+                        page,
+                        seo_entry,
+                        diag_style,
+                        outline,
+                        model_name=st.session_state.get("model_name", DEFAULT_MODEL_NAME),
+                    )
+
+                with st.spinner("Refining draft with golden rules and SEO cues..."):
+                    refined = refine_draft(
+                        client,
+                        brand_info,
+                        page,
+                        seo_entry,
+                        diag_style,
+                        draft,
+                        model_name=st.session_state.get("model_name", DEFAULT_MODEL_NAME),
+                    )
+
+                st.session_state["diagnostic_result"] = {
+                    "outline": outline,
+                    "draft": draft,
+                    "final": refined,
+                    "page": page,
+                    "home_profile": home_page_profile,
+                    "dynamic_rules": [chunk.metadata for chunk in dynamic_rules],
+                }
+                st.success("Step-by-step pipeline complete. Review the sections below.")
+            except Exception as exc:
+                st.session_state["diagnostic_result"] = None
+                st.error(f"Diagnostics run failed: {exc}")
+
+        diagnostic_result = st.session_state.get("diagnostic_result")
+        if diagnostic_result:
+            st.subheader("Prompt & retrieval debug")
+            st.caption("View the exact prompt, homepage profile, and retrieved rule metadata.")
+
+            with st.expander("Full prompt sent to the model", expanded=False):
+                st.code(st.session_state.get("diagnostic_prompt", ""))
+
+            meta = st.session_state.get("diagnostic_prompt_meta")
+            if meta:
+                st.markdown("##### Prompt diagnostics object")
+                st.json(meta)
+
+            if diagnostic_result.get("dynamic_rules"):
+                st.markdown("##### Retrieved rule snippets")
+                st.json(diagnostic_result.get("dynamic_rules"))
+
+            if diagnostic_result.get("home_profile"):
+                st.markdown("##### Homepage tone/profile signals")
+                st.json(diagnostic_result.get("home_profile"))
+
+            st.markdown("---")
+            st.subheader("Generation steps")
+            st.markdown("Review each stage to pinpoint where the output diverges from expectations.")
+
+            step_cols = st.columns(3)
+            step_cols[0].markdown("**Outline**")
+            step_cols[1].markdown("**Draft**")
+            step_cols[2].markdown("**Refined**")
+
+            st.markdown("##### Outline (structure only)")
+            st.json(diagnostic_result.get("outline"))
+            st.markdown("##### Draft (first pass)")
+            st.json(diagnostic_result.get("draft"))
+            st.markdown("##### Final refined JSON")
+            st.json(diagnostic_result.get("final"))
+
+            st.markdown("##### Visual preview")
+            render_page_preview(
+                diagnostic_result["page"].page_type,
+                diagnostic_result.get("final", {}),
+            )
 
 
 if __name__ == "__main__":
